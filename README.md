@@ -1,8 +1,7 @@
 # WhiteSpace
 Personal Vulkan Engine
 
-- I dont like opengl
-- I actually want to die from opengl programming
+- I Can't Get Vulkan Validation Layers Working (Incorrectly Installed Vulkan Probably)
 
 ## Dependancies
 - GLFW
