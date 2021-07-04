@@ -1,7 +1,5 @@
 # WhiteSpace
-Personal Vulkan & OpenGL Engine
-
-- I Can't Get Vulkan Validation Layers Working (Incorrectly Installed Vulkan Probably)
-
-## Dependancies
+Personal Vulkan
+- I dont want to deal with openGL's state machine absurdity
+- I often change my mind on openGL though so future support maybe
 
