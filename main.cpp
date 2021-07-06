@@ -258,6 +258,10 @@ namespace WS {
             vkDestroyFence(device, i, nullptr);
         }
     }
+    void destroyObjects(VkBuffer buffer, VkDeviceMemory deviceMemory, VkDevice device) {
+        vkDestroyBuffer(device, buffer, nullptr);
+        vkFreeMemory(device, deviceMemory, nullptr);
+    }
 
     std::tuple<GLFWwindow*, VkSurfaceKHR> createWindow(const char* title,int w, int h, VkInstance instance) {
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -889,7 +893,7 @@ namespace WS {
         }
         return commandPool;
     }
-    std::vector<VkCommandBuffer> createCommandBuffers(VkDevice device, VkCommandPool commandPool, std::vector<VkFramebuffer> framebuffers, VkRenderPass renderPass, VkPipeline graphicsPipeline, VkExtent2D extent) {
+    std::vector<VkCommandBuffer> createCommandBuffers(VkDevice device, VkCommandPool commandPool, std::vector<VkFramebuffer> framebuffers, VkRenderPass renderPass, VkPipeline graphicsPipeline, VkExtent2D extent, VkBuffer vertexBuffer = VK_NULL_HANDLE) {
         std::vector<VkCommandBuffer> commandBuffers{}; commandBuffers.resize(framebuffers.size());
         
         VkCommandBufferAllocateInfo allocInfo{};
@@ -927,6 +931,13 @@ namespace WS {
 
             vkCmdBeginRenderPass(commandBuffers[i], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
             vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+
+            if (vertexBuffer != VK_NULL_HANDLE) {
+                VkBuffer vertexBuffers[] {vertexBuffer};
+                VkDeviceSize offsets[] = {0};
+                vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, vertexBuffers, offsets);
+            }
+
             vkCmdDraw(commandBuffers[i], 3, 1, 0, 0);
             vkCmdEndRenderPass(commandBuffers[i]);
             if (vkEndCommandBuffer(commandBuffers[i]) != VK_SUCCESS) {
@@ -1001,31 +1012,26 @@ namespace WS {
 
 
         swapchain = createSwapchain(physicalDevice, device, surface, window, queueList, imageFormat, extent, graphicsIndex, presentIndex);
-        printf("creating swapchain\n");
         auto SwapchainImages = getSwapchainImages(device, swapchain);
-        printf("creating images\n");
         imageViews = createImageViews(SwapchainImages, device, imageFormat);
-        printf("creating image views\n");
         renderPass = createRenderpass(device, imageFormat);
-        printf("creating renderpass\n");
+        
 
 
         auto vertexShader = createShaderModule(vertexPath,device);
         auto fragmentShader = createShaderModule(fragmentPath,device);
         graphicsPipeline = createGraphicsPipeline(device, vertexShader, fragmentShader, renderPass, extent, physicalDevice, DrawMode);
-        printf("creating graphics\n");
         framebuffers = createFramebuffers(imageViews, renderPass, extent, device);
-        printf("creating framebuffer\n");
         commandBuffers = createCommandBuffers(device, commandPool, framebuffers, renderPass, graphicsPipeline, extent);
-        printf("creating commandbuffer\n");
 
 
     }
-    VkBuffer createVertexBuffer(std::vector<vertex> vertices, VkDevice device) {
+    VkBuffer createVertexBuffer(std::vector<vertex> vertices, VkDevice device, VkDeviceSize& size) {
         VkBuffer Buffer;
         VkBufferCreateInfo BufferInfo{};
         BufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         BufferInfo.size = sizeof(vertices[0]) * vertices.size();
+        size = BufferInfo.size;
         BufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
         BufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
@@ -1034,6 +1040,38 @@ namespace WS {
             logError(bufferResult, "Vertex Buffer: ");
             throw std::runtime_error("Buffer Failed Creation");
         }
+        return Buffer;
+    }
+    uint32_t findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties) {
+        VkPhysicalDeviceMemoryProperties memProperties;
+        vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
+        for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+            if (typeFilter & (1 << i) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+                return i;
+            }
+        }
+        throw std::runtime_error("Failed To Find Memory Type");
+    }
+    void allocateVertexBuffer(VkDevice device, VkPhysicalDevice physicalDevice, VkBuffer buffer, VkDeviceMemory deviceMemory, VkDeviceSize size, std::vector<vertex> vertices) {
+        VkMemoryRequirements memRequirements{};
+        vkGetBufferMemoryRequirements(device, buffer, &memRequirements);
+
+        VkMemoryAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = memRequirements.size;
+        allocInfo.memoryTypeIndex = findMemoryType(physicalDevice, memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        
+        VkResult allocResult = vkAllocateMemory(device, &allocInfo, nullptr, &deviceMemory);
+        if (allocResult != VK_SUCCESS) {
+            logError(allocResult, "Buffer Allocation: ");
+            throw std::runtime_error("Failed Buffer Allocation");
+        }
+        vkBindBufferMemory(device, buffer, deviceMemory, 0);
+
+        void* data;
+        vkMapMemory(device, deviceMemory, 0, size, 0, &data);
+        memcpy(data, vertices.data(), size_t(size));
+        vkUnmapMemory(device, deviceMemory);
     }
 }
 
@@ -1086,8 +1124,10 @@ int main() {
         {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
         {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
     };
-    auto VertexBuffer = WS::createVertexBuffer(vertices,Device);
-
+    VkDeviceSize VertexBufferSize;
+    auto VertexBuffer = WS::createVertexBuffer(vertices,Device, VertexBufferSize);
+    VkDeviceMemory VertexBufferMemory{};
+    WS::allocateVertexBuffer(Device, PhysicalDevice, VertexBuffer, VertexBufferMemory, VertexBufferSize, vertices);
 
 
 
@@ -1194,7 +1234,7 @@ int main() {
     WS::destroyObjects(RenderPass, Device);
     WS::destroyObjects(GraphicsPipeline, Device);
     WS::destroyObjects(Swapchain, SwapchainImageViews, Device);
-    vkDestroyBuffer(Device, VertexBuffer, nullptr);
+    WS::destroyObjects(VertexBuffer, VertexBufferMemory, Device);
     WS::destroyObjects(SurfaceObjects, Instance);
     WS::destroyObjects(Device);
     WS::destroyObjects(Instance);
