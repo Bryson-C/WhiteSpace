@@ -62,15 +62,25 @@ namespace WS {
     typedef std::vector<VkFramebuffer>                                      Framebuffers;
     typedef std::vector<VkCommandBuffer>                                    CommandBuffers;
     typedef std::vector<const char*>                                        Extensions;
-    typedef std::tuple<GLFWwindow*, VkSurfaceKHR>                           SurfaceObjects;
-    typedef std::tuple<VkSurfaceFormatKHR, VkPresentModeKHR, VkExtent2D>    PresentationInfo; 
-    typedef std::tuple<VkPhysicalDevice,VkDevice>                           Devices;
+    //typedef std::tuple<GLFWwindow*, VkSurfaceKHR>                         SurfaceObjects;
+    typedef struct {GLFWwindow* Window; VkSurfaceKHR Surface; }             SurfaceObjects;
+    //typedef std::tuple<VkSurfaceFormatKHR, VkPresentModeKHR, VkExtent2D>  PresentationInfo; 
+    typedef struct {VkSurfaceFormatKHR Format; VkPresentModeKHR PresentMode;
+                                                    VkExtent2D Extent; }    PresentationInfo;
+    //typedef std::tuple<VkPhysicalDevice,VkDevice>                         Devices;
+    typedef struct {VkPhysicalDevice PhysicalDevice; VkDevice Device; }     Devices;
     typedef std::array<VkShaderModule,2>                                    ShaderProgram;
     typedef std::vector<VkDescriptorSet>                                    DescriptorSets;
-    typedef std::tuple<VkBuffer,VkDeviceMemory>                             BufferObjects;
-    typedef std::tuple<VkBuffer,std::vector<uint16_t>>                      IndexBufferObjects;
+    //typedef std::tuple<VkBuffer,VkDeviceMemory>                           BufferObjects;
+    typedef struct {VkBuffer Buffer; VkDeviceMemory Memory;}                BufferObjects;
+    //typedef std::tuple<VkBuffer,std::vector<uint16_t>>                    IndexBufferObjects;
     typedef std::vector<VkSemaphore>                                        SemaphoreList;
     typedef std::vector<VkFence>                                            FenceList;
+    typedef struct {const void* data; VkDeviceSize Size; VkBuffer Buffer;}  Buffer;
+    typedef struct {}                                                       VulkanState;
+
+
+    typedef struct { alignas(16) glm::vec2 offset; alignas(16) glm::vec3 color; } PushConstantData;
 
 
     // Creation
@@ -83,30 +93,32 @@ namespace WS {
     ImageList               getSwapchainImages(VkDevice Device, VkSwapchainKHR Swapchain);
     ImageViews              createImageViews(WS::ImageList images, VkDevice device, VkFormat imageFormat);
     VkShaderModule          createShaderModule(const char* filename, VkDevice device);
+    ShaderProgram           createShaderProgram(VkDevice device, const char* vShader, const char* fShader);
     VkDescriptorPool        createDescriptorPool(VkDevice device, std::vector<VkImage>swapchainImages);
     VkDescriptorSetLayout   createDescriptorSetLayout(VkDevice device);
     DescriptorSets          createDescriptorSet(VkDevice device, VkDescriptorPool descriptorPool, VkDescriptorSetLayout descriptorSetLayout, ImageList swapchainImages, std::vector<VkBuffer> uniformBuffers);
-    VkPipeline              createGraphicsPipeline(WS::Devices Devices, WS::ShaderProgram Program, VkRenderPass RenderPass, VkExtent2D SwapchainExtent, VkPolygonMode DrawMode = VK_POLYGON_MODE_FILL, VkDescriptorSetLayout* DescriptorSet = nullptr);
+    VkPipeline              createGraphicsPipeline(WS::Devices Devices, WS::ShaderProgram Program, VkRenderPass RenderPass, VkExtent2D SwapchainExtent, VkPipelineLayout& Layout, VkPolygonMode DrawMode = VK_POLYGON_MODE_FILL, VkDescriptorSetLayout* DescriptorSet = nullptr);
     VkRenderPass            createRenderPass(VkDevice Device, VkFormat ImageFormat);
     Framebuffers            createFrameBuffers(VkDevice device, WS::ImageViews imageViews,VkRenderPass renderPass, VkExtent2D extent);
-    VkCommandPool           createCommandPool(VkDevice Device, uint32_t queue);
+    VkCommandPool           createCommandPool(VkDevice Device, uint32_t queue, uint32_t flags = 0);
     CommandBuffers          createCommandBuffers(VkDevice device, VkCommandPool commandPool, WS::Framebuffers framebuffers, VkRenderPass renderPass, VkPipeline graphicsPipeline, VkExtent2D extent, 
-                                                VkBuffer vertexBuffer = VK_NULL_HANDLE, WS::IndexBufferObjects IndexBufferObjects = {}, WS::DescriptorSets descriptorSet = {}, VkPipelineLayout* pipelineLayout = nullptr);
+                                                VkBuffer vertexBuffer = VK_NULL_HANDLE, std::vector<uint16_t> indices = {}, WS::BufferObjects IndexBuffer = {}, WS::DescriptorSets descriptorSet = {}, VkPipelineLayout* pipelineLayout = nullptr);
     VkBuffer                createBuffer(WS::Devices Devices, VkBufferUsageFlags Usage, VkMemoryPropertyFlags Properties, VkDeviceMemory& BufferMemory, VkDeviceSize Size);
     BufferObjects           createStagingBuffer(WS::Devices Devices, VkDeviceSize SizeOfData);
     BufferObjects           createVertexBuffer(WS::Devices Devices, VkDeviceSize SizeOfData);
+    BufferObjects           createIndexBuffer(WS::Devices devices, VkDeviceSize sizeOfData, std::vector<uint16_t> indices);
     SemaphoreList           createSemaphores(const size_t semaphoreCount, VkDevice device);
     FenceList               createFences(const size_t fenceCount, VkDevice device);
 
 
     // Other
     void                    logError(VkResult result, const char* Object);
-    inline bool             windowIsOpen(SurfaceObjects SurfaceObjects) { return !glfwWindowShouldClose(std::get<0>(SurfaceObjects)); }
+    inline bool             windowIsOpen(SurfaceObjects SurfaceObjects) { return !glfwWindowShouldClose(SurfaceObjects.Window); }
     inline bool             windowIsOpen(GLFWwindow* Window) { return !glfwWindowShouldClose(Window); }
 
-    inline void             setWindowTitle(SurfaceObjects SurfaceObjects, const char* Title) { glfwSetWindowTitle(std::get<0>(SurfaceObjects), Title); }
+    inline void             setWindowTitle(SurfaceObjects SurfaceObjects, const char* Title) { SurfaceObjects.Window, Title; }
     inline void             setWindowTitle(GLFWwindow* Window, const char* Title) { glfwSetWindowTitle(Window, Title); }
-    inline void             swapWindowBuffers(SurfaceObjects SurfaceObjects) { glfwSwapBuffers(std::get<0>(SurfaceObjects)); }
+    inline void             swapWindowBuffers(SurfaceObjects SurfaceObjects) { glfwSwapBuffers(SurfaceObjects.Window); }
     inline void             swapWindowBuffers(GLFWwindow* Window) { glfwSwapBuffers(Window); }
 
     uint32_t                findMemoryType(VkPhysicalDevice PhysicalDevice, uint32_t TypeFilter, VkMemoryPropertyFlags Properties);
@@ -116,26 +128,234 @@ namespace WS {
     void                    copyBuffer(VkDevice Device, BufferObjects srcBuffer, BufferObjects dstBuffer, VkDeviceSize Size, VkCommandPool CommandPool, VkQueue Queue);
     
     
-    //void                 recordCommandBuffers();
-    //void                 uploadBuffer();
-
+    WS::CommandBuffers      startCmdBufferRecording(WS::Framebuffers framebuffers, VkCommandPool commandPool, VkDevice device, VkRenderPass& renderPass, VkExtent2D extent);
+    void                    stopCmdBufferRecording(WS::CommandBuffers commandBuffers);
+    void                    resetCommandBuffers(VkDevice device, VkCommandPool commandPool);
 
 
     // destroying objects
-    inline void             destroyObjects(VkInstance instances) { vkDestroyInstance(instances, nullptr); }
-    inline void             destroyObjects(VkDevice device) { vkDestroyDevice(device, nullptr); }
-    inline void             destroyObjects(std::tuple<GLFWwindow*, VkSurfaceKHR> SurfaceObjects, VkInstance instance) { vkDestroySurfaceKHR(instance, std::get<1>(SurfaceObjects), nullptr); glfwDestroyWindow(std::get<0>(SurfaceObjects)); } 
-    inline void             destroyObjects(VkSwapchainKHR swapchain,std::vector<VkImageView> imageViews, VkDevice device) { for (auto i : imageViews) { vkDestroyImageView(device, i, nullptr); } vkDestroySwapchainKHR(device, swapchain, nullptr); }
-    inline void             destroyObjects(VkPipeline pipeline, VkDevice device) { vkDestroyPipeline(device, pipeline, nullptr); }
-    inline void             destroyObjects(VkRenderPass renderPass, VkDevice device) { vkDestroyRenderPass(device, renderPass, nullptr); }
-    inline void             destroyObjects(std::vector<VkFramebuffer> frameBuffers, VkCommandPool commandPool, std::vector<VkCommandBuffer> commandBuffers, VkDevice device) { for (auto i : frameBuffers) { vkDestroyFramebuffer(device, i, nullptr); } vkFreeCommandBuffers(device, commandPool, static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data()); }
-    inline void             destroyObjects(VkCommandPool commandPool, VkDevice device) { vkDestroyCommandPool(device, commandPool, nullptr); }
-    inline void             destroyObjects(std::vector<VkSemaphore> semaphores, VkDevice device) { for (auto i : semaphores) { vkDestroySemaphore(device, i, nullptr); }}
-    inline void             destroyObjects(std::vector<VkFence> fences, VkDevice device) { for (auto i : fences) { vkWaitForFences(device, 1, &i, VK_TRUE, UINT64_MAX); vkDestroyFence(device, i, nullptr); }}
-    inline void             destroyObjects(VkBuffer buffer, VkDeviceMemory deviceMemory, VkDevice device) { vkDestroyBuffer(device, buffer, nullptr); vkFreeMemory(device, deviceMemory, nullptr); }
-    inline void             destroyObjects(BufferObjects BufferObjects, VkDevice device) { vkDestroyBuffer(device, std::get<0>(BufferObjects), nullptr); vkFreeMemory(device, std::get<1>(BufferObjects), nullptr); }
-    inline void             destroyObjects(VkDescriptorSetLayout descriptorSet, VkDevice device) { vkDestroyDescriptorSetLayout(device, descriptorSet, nullptr);}
+    inline void             destroyInstance(VkInstance instances) { vkDestroyInstance(instances, nullptr); }
+    inline void             destroyDevice(VkDevice device) { vkDestroyDevice(device, nullptr); }
+    inline void             destroySurfaceObjects(std::tuple<GLFWwindow*, VkSurfaceKHR> SurfaceObjects, VkInstance instance) { vkDestroySurfaceKHR(instance, std::get<1>(SurfaceObjects), nullptr); glfwDestroyWindow(std::get<0>(SurfaceObjects)); } 
+    inline void             destroySwapchain(VkSwapchainKHR swapchain, VkDevice device) { vkDestroySwapchainKHR(device, swapchain, nullptr); }
+    inline void             destroyImageViews(std::vector<VkImageView> imageViews, VkDevice device) { for (auto i : imageViews) { vkDestroyImageView(device, i, nullptr); } }
+    inline void             destroyPipeline(VkPipeline pipeline, VkDevice device) { vkDestroyPipeline(device, pipeline, nullptr); }
+    inline void             destroyRenderPass(VkRenderPass renderPass, VkDevice device) { vkDestroyRenderPass(device, renderPass, nullptr); }
+    inline void             destroyFrameBuffers(std::vector<VkFramebuffer> frameBuffers, VkDevice device) { for (auto i : frameBuffers) { vkDestroyFramebuffer(device, i, nullptr); } }
+    inline void             destroyCommandBuffers(VkCommandPool commandPool, std::vector<VkCommandBuffer> commandBuffers, VkDevice device) { vkFreeCommandBuffers(device, commandPool, static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data()); }
+    inline void             destroyCommandPool(VkCommandPool commandPool, VkDevice device) { vkDestroyCommandPool(device, commandPool, nullptr); }
+    inline void             destroySemaphores(std::vector<VkSemaphore> semaphores, VkDevice device) { for (auto i : semaphores) { vkDestroySemaphore(device, i, nullptr); }}
+    inline void             destroyFences(std::vector<VkFence> fences, VkDevice device) { for (auto i : fences) { vkWaitForFences(device, 1, &i, VK_TRUE, UINT64_MAX); vkDestroyFence(device, i, nullptr); }}
+    inline void             destroyBuffer(VkBuffer buffer, VkDeviceMemory deviceMemory, VkDevice device) { vkDestroyBuffer(device, buffer, nullptr); vkFreeMemory(device, deviceMemory, nullptr); }
+    inline void             destroyBuffer(BufferObjects BufferObjects, VkDevice device) { vkDestroyBuffer(device, BufferObjects.Buffer, nullptr); vkFreeMemory(device, BufferObjects.Memory, nullptr); }
+    inline void             destroyDescriptorSets(VkDescriptorSetLayout descriptorSet, VkDevice device) { vkDestroyDescriptorSetLayout(device, descriptorSet, nullptr);}
+
+
+
+    /* Because I Can
+    ⠀⠀⠀⠀⣀⣤
+⠀⠀⠀⠀⣿⠿⣶
+⠀⠀⠀⠀⣿⣿⣀
+⠀⠀⠀⣶⣶⣿⠿⠛⣶
+⠤⣀⠛⣿⣿⣿⣿⣿⣿⣭⣿⣤
+⠒⠀⠀⠀⠉⣿⣿⣿⣿⠀⠀⠉⣀
+⠀⠤⣤⣤⣀⣿⣿⣿⣿⣀⠀⠀⣿
+⠀⠀⠛⣿⣿⣿⣿⣿⣿⣿⣭⣶⠉
+⠀⠀⠀⠤⣿⣿⣿⣿⣿⣿⣿
+⠀⠀⠀⣭⣿⣿⣿⠀⣿⣿⣿
+⠀⠀⠀⣉⣿⣿⠿⠀⠿⣿⣿
+⠀⠀⠀⠀⣿⣿⠀⠀⠀⣿⣿⣤
+⠀⠀⠀⣀⣿⣿⠀⠀⠀⣿⣿⣿
+⠀⠀⠀⣿⣿⣿⠀⠀⠀⣿⣿⣿
+⠀⠀⠀⣿⣿⠛⠀⠀⠀⠉⣿⣿
+⠀⠀⠀⠉⣿⠀⠀⠀⠀⠀⠛⣿
+⠀⠀⠀⠀⣿⠀⠀⠀⠀⠀⠀⣿⣿
+⠀⠀⠀⠀⣛⠀⠀⠀⠀⠀⠀⠛⠿⠿⠿
+⠀⠀⠀⠛⠛
+
+
+⠀⠀⠀⣀⣶⣀
+⠀⠀⠀⠒⣛⣭
+⠀⠀⠀⣀⠿⣿⣶
+⠀⣤⣿⠤⣭⣿⣿
+⣤⣿⣿⣿⠛⣿⣿⠀⣀
+⠀⣀⠤⣿⣿⣶⣤⣒⣛
+⠉⠀⣀⣿⣿⣿⣿⣭⠉
+⠀⠀⣭⣿⣿⠿⠿⣿
+⠀⣶⣿⣿⠛⠀⣿⣿
+⣤⣿⣿⠉⠤⣿⣿⠿
+⣿⣿⠛⠀⠿⣿⣿
+⣿⣿⣤⠀⣿⣿⠿
+⠀⣿⣿⣶⠀⣿⣿⣶
+⠀⠀⠛⣿⠀⠿⣿⣿
+⠀⠀⠀⣉⣿⠀⣿⣿
+⠀⠶⣶⠿⠛⠀⠉⣿
+⠀⠀⠀⠀⠀⠀⣀⣿
+⠀⠀⠀⠀⠀⣶⣿⠿
+
+⠀⠀⠀⠀⠀⠀⠀⠀⣤⣿⣿⠶⠀⠀⣀⣀
+⠀⠀⠀⠀⠀⠀⣀⣀⣤⣤⣶⣿⣿⣿⣿⣿⣿
+⠀⠀⣀⣶⣤⣤⠿⠶⠿⠿⠿⣿⣿⣿⣉⣿⣿
+⠿⣉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠛⣤⣿⣿⣿⣀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⣿⣿⣿⣿⣶⣤
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣤⣿⣿⣿⣿⠿⣛⣿
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⠛⣿⣿⣿⣿
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣶⣿⣿⠿⠀⣿⣿⣿⠛
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⠀⠀⣿⣿⣿
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠿⠿⣿⠀⠀⣿⣶
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⠛⠀⠀⣿⣿⣶
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⣿⣿⠤
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠿⣿
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣶⣿
+
+⠀⠀⣀
+⠀⠿⣿⣿⣀
+⠀⠉⣿⣿⣀
+⠀⠀⠛⣿⣭⣀⣀⣤
+⠀⠀⣿⣿⣿⣿⣿⠛⠿⣶⣀
+⠀⣿⣿⣿⣿⣿⣿⠀⠀⠀⣉⣶
+⠀⠀⠉⣿⣿⣿⣿⣀⠀⠀⣿⠉
+⠀⠀⠀⣿⣿⣿⣿⣿⣿⣿⣿
+⠀⣀⣿⣿⣿⣿⣿⣿⣿⣿⠿
+⠀⣿⣿⣿⠿⠉⣿⣿⣿⣿
+⠀⣿⣿⠿⠀⠀⣿⣿⣿⣿
+⣶⣿⣿⠀⠀⠀⠀⣿⣿⣿
+⠛⣿⣿⣀⠀⠀⠀⣿⣿⣿⣿⣶⣀
+⠀⣿⣿⠉⠀⠀⠀⠉⠉⠉⠛⠛⠿⣿⣶
+⠀⠀⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣿
+⠀⠀⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠉⠉
+⣀⣶⣿⠛
+
+⠀⠀⠀⠀⠀⠀⠀⣀⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⣿⣿⣿⣤⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣤⣤⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠉⣿⣿⣿⣶⣿⣿⣿⣶⣶⣤⣶⣶⠶⠛⠉⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⣤⣿⠿⣿⣿⣿⣿⣿⠀⠀⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠛⣿⣤⣤⣀⣤⠿⠉⠀⠉⣿⣿⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠉⠉⠉⠉⠉⠀⠀⠀⠀⠉⣿⣿⣿⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣶⣿⣿⣿⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⣿⣿⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⣿⣿⣿⠛⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⣿⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣛⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⣶⣿⣿⠛⠿⣿⣿⣿⣶⣤⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⣿⠛⠉⠀⠀⠀⠛⠿⣿⣿⣶⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⣿⣀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠛⠿⣶⣤⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠛⠿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣿⣿⠿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠛⠉⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+
+⠀⠀⠀⠀⠀⠀⣤⣶⣶
+⠀⠀⠀⠀⠀⠀⣿⣿⣿⣿⣀⣀
+⠀⠀⠀⠀⠀⣀⣶⣿⣿⣿⣿⣿⣿
+⣤⣶⣀⠿⠶⣿⣿⣿⠿⣿⣿⣿⣿
+⠉⠿⣿⣿⠿⠛⠉⠀⣿⣿⣿⣿⣿
+⠀⠀⠉⠀⠀⠀⠀⠀⠀⣿⣿⣿⣿⣤⣤
+⠀⠀⠀⠀⠀⠀⠀⣤⣶⣿⣿⣿⣿⣿⣿
+⠀⠀⠀⠀⠀⣀⣿⣿⣿⣿⣿⠿⣿⣿⣿⣿
+⠀⠀⠀⠀⣀⣿⣿⣿⠿⠉⠀⠀⣿⣿⣿⣿
+⠀⠀⠀⠀⣿⣿⠿⠉⠀⠀⠀⠀⠿⣿⣿⠛
+⠀⠀⠀⠀⠛⣿⣿⣀⠀⠀⠀⠀⠀⣿⣿⣀
+⠀⠀⠀⠀⠀⣿⣿⣿⠀⠀⠀⠀⠀⠿⣿⣿
+⠀⠀⠀⠀⠀⠉⣿⣿⠀⠀⠀⠀⠀⠀⠉⣿
+⠀⠀⠀⠀⠀⠀⠀⣿⠀⠀⠀⠀⠀⠀⣀⣿
+⠀⠀⠀⠀⠀⠀⣀⣿⣿
+⠀⠀⠀⠀⠤⣿⠿⠿⠿
+
+⠀⠀⠀⠀⣀
+⠀⠀⣶⣿⠿⠀⠀⠀⣀⠀⣤⣤
+⠀⣶⣿⠀⠀⠀⠀⣿⣿⣿⠛⠛⠿⣤⣀
+⣶⣿⣤⣤⣤⣤⣤⣿⣿⣿⣀⣤⣶⣭⣿⣶⣀
+⠉⠉⠉⠛⠛⠿⣿⣿⣿⣿⣿⣿⣿⠛⠛⠿⠿
+⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⣿⣿⠿
+⠀⠀⠀⠀⠀⠀⠀⠿⣿⣿⣿⣿
+⠀⠀⠀⠀⠀⠀⠀⠀⣭⣿⣿⣿⣿⣿
+⠀⠀⠀⠀⠀⠀⠀⣤⣿⣿⣿⣿⣿⣿
+⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⣿⣿⣿⠿
+⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⣿⣿⠿
+⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⣿⣿
+⠀⠀⠀⠀⠀⠀⠀⠉⣿⣿⣿⣿
+⠀⠀⠀⠀⠀⠀⠀⠀⠉⣿⣿⣿⣿
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⣿⠛⠿⣿⣤
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣿⠀⠀⠀⣿⣿⣤
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⠀⠀⠀⣶⣿⠛⠉
+⠀⠀⠀⠀⠀⠀⠀⠀⣤⣿⣿⠀⠀⠉
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉
+
+⠀⠀⠀⠀⠀⠀⣶⣿⣶
+⠀⠀⠀⣤⣤⣤⣿⣿⣿
+⠀⠀⣶⣿⣿⣿⣿⣿⣿⣿⣶
+⠀⠀⣿⣿⣿⣿⣿⣿⣿⣿⣿
+⠀⠀⣿⣉⣿⣿⣿⣿⣉⠉⣿⣶
+⠀⠀⣿⣿⣿⣿⣿⣿⣿⣿⠿⣿
+⠀⣤⣿⣿⣿⣿⣿⣿⣿⠿⠀⣿⣶
+⣤⣿⠿⣿⣿⣿⣿⣿⠿⠀⠀⣿⣿⣤
+⠉⠉⠀⣿⣿⣿⣿⣿⠀⠀⠒⠛⠿⠿⠿
+⠀⠀⠀⠉⣿⣿⣿⠀⠀⠀⠀⠀⠀⠉
+⠀⠀⠀⣿⣿⣿⣿⣿⣶
+⠀⠀⠀⠀⣿⠉⠿⣿⣿
+⠀⠀⠀⠀⣿⣤⠀⠛⣿⣿
+⠀⠀⠀⠀⣶⣿⠀⠀⠀⣿⣶
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⣭⣿⣿
+⠀⠀⠀⠀⠀⠀⠀⠀⣤⣿⣿⠉
+
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⣤⣶
+⠀⠀⠀⠀⠀⣀⣀⠀⣶⣿⣿⠶
+⣶⣿⠿⣿⣿⣿⣿⣿⣿⣿⣿⣤⣤
+⠀⠉⠶⣶⣀⣿⣿⣿⣿⣿⣿⣿⠿⣿⣤⣀
+⠀⠀⠀⣿⣿⠿⠉⣿⣿⣿⣿⣭⠀⠶⠿⠿
+⠀⠀⠛⠛⠿⠀⠀⣿⣿⣿⣉⠿⣿⠶
+⠀⠀⠀⠀⠀⣤⣶⣿⣿⣿⣿⣿
+⠀⠀⠀⠀⠀⣿⣿⣿⣿⣿⣿⣿⠒
+⠀⠀⠀⠀⣀⣿⣿⣿⣿⣿⣿⣿
+⠀⠀⠀⠀⠀⣿⣿⣿⠛⣭⣭⠉
+⠀⠀⠀⠀⠀⣿⣿⣭⣤⣿⠛
+⠀⠀⠀⠀⠀⠛⠿⣿⣿⣿⣭
+⠀⠀⠀⠀⠀⠀⠀⣿⣿⠉⠛⠿⣶⣤
+⠀⠀⠀⠀⠀⠀⣀⣿⠀⠀⣶⣶⠿⠿⠿
+⠀⠀⠀⠀⠀⠀⣿⠛
+⠀⠀⠀⠀⠀⠀⣭⣶
+
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⣤⣤
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿
+⠀⠀⣶⠀⠀⣀⣤⣶⣤⣉⣿⣿⣤⣀
+⠤⣤⣿⣤⣿⠿⠿⣿⣿⣿⣿⣿⣿⣿⣿⣀
+⠀⠛⠿⠀⠀⠀⠀⠉⣿⣿⣿⣿⣿⠉⠛⠿⣿⣤
+⠀⠀⠀⠀⠀⠀⠀⠀⠿⣿⣿⣿⠛⠀⠀⠀⣶⠿
+⠀⠀⠀⠀⠀⠀⠀⠀⣀⣿⣿⣿⣿⣤⠀⣿⠿
+⠀⠀⠀⠀⠀⠀⠀⣶⣿⣿⣿⣿⣿⣿⣿⣿
+⠀⠀⠀⠀⠀⠀⠀⠿⣿⣿⣿⣿⣿⠿⠉⠉
+⠀⠀⠀⠀⠀⠀⠀⠉⣿⣿⣿⣿⠿
+⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⠉
+⠀⠀⠀⠀⠀⠀⠀⠀⣛⣿⣭⣶⣀
+⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⣿⣿
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⠉⠛⣿
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⠀⠀⣿⣿
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣉⠀⣶⠿
+⠀⠀⠀⠀⠀⠀⠀⠀⣶⣿⠿
+⠀⠀⠀⠀⠀⠀⠀⠛⠿⠛
+
+⠀⠀⠀⣶⣿⣶
+⠀⠀⠀⣿⣿⣿⣀
+⠀⣀⣿⣿⣿⣿⣿⣿
+⣶⣿⠛⣭⣿⣿⣿⣿
+⠛⠛⠛⣿⣿⣿⣿⠿
+⠀⠀⠀⠀⣿⣿⣿
+⠀⠀⣀⣭⣿⣿⣿⣿⣀
+⠀⠤⣿⣿⣿⣿⣿⣿⠉
+⠀⣿⣿⣿⣿⣿⣿⠉
+⣿⣿⣿⣿⣿⣿
+⣿⣿⣶⣿⣿
+⠉⠛⣿⣿⣶⣤
+⠀⠀⠉⠿⣿⣿⣤
+⠀⠀⣀⣤⣿⣿⣿
+⠀⠒⠿⠛⠉⠿⣿
+⠀⠀⠀⠀⠀⣀⣿⣿
+⠀⠀⠀⠀⣶⠿⠿⠛ 
+
+    */
 }
+
 
 namespace WSDefaultCreation {
 

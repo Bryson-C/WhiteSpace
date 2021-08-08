@@ -256,6 +256,38 @@ VkInstance WS::createInstance(bool debug) {
 
 
 }
+VkSampleCountFlagBits getMaxMsaaSampleCount(VkPhysicalDevice physicalDevice) {
+
+    VkPhysicalDeviceProperties physicalDeviceProperties;
+    vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
+
+    VkSampleCountFlags counts = physicalDeviceProperties.limits.framebufferColorSampleCounts & physicalDeviceProperties.limits.framebufferDepthSampleCounts;
+    if (counts & VK_SAMPLE_COUNT_64_BIT) { return VK_SAMPLE_COUNT_64_BIT; }
+    if (counts & VK_SAMPLE_COUNT_32_BIT) { return VK_SAMPLE_COUNT_32_BIT; }
+    if (counts & VK_SAMPLE_COUNT_16_BIT) { return VK_SAMPLE_COUNT_16_BIT; }
+    if (counts & VK_SAMPLE_COUNT_8_BIT) { return VK_SAMPLE_COUNT_8_BIT; }
+    if (counts & VK_SAMPLE_COUNT_4_BIT) { return VK_SAMPLE_COUNT_4_BIT; }
+    if (counts & VK_SAMPLE_COUNT_2_BIT) { return VK_SAMPLE_COUNT_2_BIT; }
+
+    return VK_SAMPLE_COUNT_1_BIT;
+}
+
+void logSampleCount(VkSampleCountFlagBits flag) {
+    switch (flag)
+    {
+    case VK_SAMPLE_COUNT_64_BIT: printf("Sample Count: 64\n"); break;
+    case VK_SAMPLE_COUNT_32_BIT: printf("Sample Count: 32\n"); break;
+    case VK_SAMPLE_COUNT_16_BIT: printf("Sample Count: 16\n"); break;
+    case VK_SAMPLE_COUNT_8_BIT: printf("Sample Count: 8\n"); break;
+    case VK_SAMPLE_COUNT_4_BIT: printf("Sample Count: 4\n"); break;
+    case VK_SAMPLE_COUNT_2_BIT: printf("Sample Count: 2\n"); break;
+    case VK_SAMPLE_COUNT_1_BIT: printf("Sample Count: 1\n"); break;
+    default: printf("Sample Count: Unidentified\n"); break;
+    }
+
+
+
+}
 
 VkPhysicalDevice WS::findPhysicalDevice(VkInstance instance) {
     VkPhysicalDevice SelectedDevice {};
@@ -267,6 +299,9 @@ VkPhysicalDevice WS::findPhysicalDevice(VkInstance instance) {
         SelectedDevice = gpu[i];
         break;
     }
+    auto msaa = getMaxMsaaSampleCount(SelectedDevice);
+    printf("PhysicalDevice Sample Count: \n\t");
+    logSampleCount(msaa);
     return SelectedDevice;
 }
 
@@ -391,10 +426,10 @@ VkSwapchainKHR WS::createSwapchain(WS::Devices devices, WS::SurfaceObjects surfa
         VkSwapchainKHR swapchain{};
         
 
-        VkPhysicalDevice physicalDevice = std::get<0>(devices);
-        VkDevice device = std::get<1>(devices);
-        GLFWwindow* window = std::get<0>(surfaceObjects);
-        VkSurfaceKHR surface = std::get<1>(surfaceObjects);
+        VkPhysicalDevice physicalDevice = devices.PhysicalDevice;
+        VkDevice device = devices.Device;
+        GLFWwindow* window = surfaceObjects.Window;
+        VkSurfaceKHR surface = surfaceObjects.Surface;
 
 
         auto SurfaceInfo = getPresentationInformation(physicalDevice, surface, window);
@@ -445,11 +480,11 @@ VkSwapchainKHR WS::createSwapchain(WS::Devices devices, WS::SurfaceObjects surfa
         createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
         createInfo.surface = surface;
         createInfo.minImageCount = imageCount;
-        createInfo.imageFormat = std::get<0>(SurfaceInfo).format;
-        createInfo.imageColorSpace = std::get<0>(SurfaceInfo).colorSpace;
-            imageFormat = std::get<0>(SurfaceInfo).format;
-        createInfo.imageExtent = std::get<2>(SurfaceInfo);
-            extent = std::get<2>(SurfaceInfo);
+        createInfo.imageFormat = SurfaceInfo.Format.format;
+        createInfo.imageColorSpace = SurfaceInfo.Format.colorSpace;
+            imageFormat = SurfaceInfo.Format.format;
+        createInfo.imageExtent = SurfaceInfo.Extent;
+            extent = SurfaceInfo.Extent;
         createInfo.imageArrayLayers  = 1;
         createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
         if (multiQueue) {
@@ -464,7 +499,7 @@ VkSwapchainKHR WS::createSwapchain(WS::Devices devices, WS::SurfaceObjects surfa
         }
         createInfo.preTransform = capabilities.currentTransform;
         createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-        createInfo.presentMode = std::get<1>(SurfaceInfo);
+        createInfo.presentMode = SurfaceInfo.PresentMode;
         createInfo.clipped = VK_TRUE;
         createInfo.oldSwapchain = VK_FALSE;
 
@@ -539,6 +574,12 @@ VkShaderModule WS::createShaderModule(const char* filename, VkDevice device) {
         throw std::runtime_error("Failed To Create Shader Module");
     }
     return Shader;       
+}
+
+WS::ShaderProgram WS::createShaderProgram(VkDevice device, const char* vShader, const char* fShader) {
+    auto vertex = WS::createShaderModule(vShader, device);
+    auto fragment = WS::createShaderModule(fShader, device);
+    return {vertex, fragment};
 }
 
 VkDescriptorSetLayout WS::createDescriptorSetLayout(VkDevice device) {
@@ -669,14 +710,17 @@ VkRenderPass WS::createRenderPass(VkDevice device, VkFormat imageFormat) {
     return renderPass;
 }
 
-VkPipeline WS::createGraphicsPipeline(WS::Devices devices, WS::ShaderProgram program, VkRenderPass renderPass, VkExtent2D swapchainExtent, VkPolygonMode DrawMode, VkDescriptorSetLayout* descriptorSet) {
+
+
+
+VkPipeline WS::createGraphicsPipeline(WS::Devices devices, WS::ShaderProgram program, VkRenderPass renderPass, VkExtent2D swapchainExtent, VkPipelineLayout& Layout, VkPolygonMode DrawMode, VkDescriptorSetLayout* descriptorSet) {
     VkPipeline graphicsPipeline{};
 
 
     auto vertexShader = program[0];
     auto fragmentShader = program[1];
-    auto physicalDevice = std::get<0>(devices);
-    auto device = std::get<1>(devices);
+    auto physicalDevice = devices.PhysicalDevice;
+    auto device = devices.Device;
 
 
 
@@ -812,15 +856,22 @@ VkPipeline WS::createGraphicsPipeline(WS::Devices devices, WS::ShaderProgram pro
         pipelineLayoutInfo.setLayoutCount = 1; // Optional
         pipelineLayoutInfo.pSetLayouts = descriptorSet; // Optional
     }
-    pipelineLayoutInfo.pushConstantRangeCount = 0; // Optional
-    pipelineLayoutInfo.pPushConstantRanges = nullptr; // Optional
-    
+
+    VkPushConstantRange pushConstRange{};
+    pushConstRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    pushConstRange.offset = 0;
+    pushConstRange.size = sizeof(WS::PushConstantData);
+
+    pipelineLayoutInfo.pushConstantRangeCount = 1; // Optional
+    pipelineLayoutInfo.pPushConstantRanges = &pushConstRange; // Optional
+
     
     VkResult pipelineResult = vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout);
     if (pipelineResult != VK_SUCCESS) {
         WS::logError(pipelineResult,"Pipeline Layout: ");
         throw std::runtime_error("Pipeline Layout Failed Creation");
     }
+    Layout = pipelineLayout;
 
 
     VkGraphicsPipelineCreateInfo pipelineInfo{};
@@ -865,8 +916,8 @@ uint32_t WS::findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter
 }
 
 VkBuffer WS::createBuffer(WS::Devices devices, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkDeviceMemory& bufferMemory, VkDeviceSize size) {
-        auto physicalDevice = std::get<0>(devices);
-        auto device = std::get<1>(devices);
+        auto physicalDevice = devices.PhysicalDevice;
+        auto device = devices.Device;
         
         VkBuffer Buffer;
         VkBufferCreateInfo BufferInfo{};
@@ -910,7 +961,7 @@ WS::allocateBuffer(Device, StagingBufferMemory, vertices.data(), sizeof(vertices
 
 WS::BufferObjects WS::createStagingBuffer(WS::Devices devices, VkDeviceSize SizeOfData) {
     VkDeviceMemory BufferMemory;
-    auto Buffer = WS::createBuffer({std::get<0>(devices),std::get<1>(devices)}, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, BufferMemory, SizeOfData);
+    auto Buffer = WS::createBuffer(devices, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, BufferMemory, SizeOfData);
     return {Buffer, BufferMemory};
 }
 
@@ -920,9 +971,19 @@ auto VertexBuffer = WS::createBuffer(Device, PhysicalDevice, VK_BUFFER_USAGE_VER
 
 WS::BufferObjects WS::createVertexBuffer(WS::Devices devices, VkDeviceSize SizeOfDevice) {
     VkDeviceMemory BufferMemory;
-    auto Buffer = WS::createBuffer({std::get<0>(devices),std::get<1>(devices)}, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, BufferMemory, SizeOfDevice);
+    auto Buffer = WS::createBuffer(devices, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, BufferMemory, SizeOfDevice);
     return { Buffer, BufferMemory };
 }
+
+WS::BufferObjects WS::createIndexBuffer(WS::Devices devices, VkDeviceSize sizeOfData, std::vector<uint16_t> indices) {
+    VkDeviceMemory BufferMemory;
+    if (indices.size() < 6) {
+        indices = { 0,1,2,2,3,0 };
+    }
+    auto Buffer = WS::createBuffer(devices, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, BufferMemory, sizeof(indices[0]) * indices.size());
+    return {Buffer, BufferMemory};
+}
+
 
 void WS::allocateBuffer(VkDevice device, VkDeviceMemory& deviceMemory, const void* dataToCopy, VkDeviceSize size) {
     void* data;
@@ -932,7 +993,7 @@ void WS::allocateBuffer(VkDevice device, VkDeviceMemory& deviceMemory, const voi
 }
 
 void WS::allocateBuffer(VkDevice device, WS::BufferObjects& BufferObjects, const void* dataToCopy, VkDeviceSize size) {
-    WS::allocateBuffer(device, std::get<1>(BufferObjects), dataToCopy, size);
+    WS::allocateBuffer(device, BufferObjects.Memory, dataToCopy, size);
 }
 
 void WS::copyBuffer(VkDevice device, VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size, VkCommandPool commandPool, VkQueue queue) {
@@ -971,7 +1032,7 @@ void WS::copyBuffer(VkDevice device, VkBuffer srcBuffer, VkBuffer dstBuffer, VkD
 }
 
 void WS::copyBuffer(VkDevice device, BufferObjects srcBuffer, BufferObjects dstBuffer, VkDeviceSize size, VkCommandPool commandPool, VkQueue queue) {
-    WS::copyBuffer(device, std::get<0>(srcBuffer), std::get<0>(dstBuffer), size, commandPool, queue);
+    WS::copyBuffer(device, srcBuffer.Buffer, dstBuffer.Buffer, size, commandPool, queue);
 }
 
 WS::Framebuffers WS::createFrameBuffers(VkDevice device, WS::ImageViews imageViews,VkRenderPass renderPass, VkExtent2D extent) {
@@ -1003,13 +1064,13 @@ WS::Framebuffers WS::createFrameBuffers(VkDevice device, WS::ImageViews imageVie
         return frameBuffers;
     }
 
-VkCommandPool WS::createCommandPool(VkDevice device, uint32_t queue) {
+VkCommandPool WS::createCommandPool(VkDevice device, uint32_t queue, uint32_t flags) {
     VkCommandPool commandPool;
 
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     poolInfo.queueFamilyIndex = queue;
-    poolInfo.flags = 0; // Optional
+    poolInfo.flags = flags;
     VkResult commandPoolResult = vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool);
     if (commandPoolResult != VK_SUCCESS) {
         WS::logError(commandPoolResult, "Command Pool: ");
@@ -1018,14 +1079,67 @@ VkCommandPool WS::createCommandPool(VkDevice device, uint32_t queue) {
     return commandPool;
 }
 
-WS::CommandBuffers WS::createCommandBuffers(VkDevice device, VkCommandPool commandPool, WS::Framebuffers framebuffers, VkRenderPass renderPass, VkPipeline graphicsPipeline, VkExtent2D extent, 
-    VkBuffer vertexBuffer, WS::IndexBufferObjects IndexBufferObjects, WS::DescriptorSets descriptorSet, VkPipelineLayout* pipelineLayout) {
+
+WS::CommandBuffers WS::startCmdBufferRecording(WS::Framebuffers framebuffers, VkCommandPool commandPool, VkDevice device, VkRenderPass& renderPass, VkExtent2D extent) {
+    WS::CommandBuffers commandBuffers; commandBuffers.resize(framebuffers.size());
     
-    printf("check\n");
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.commandPool = commandPool;
+    allocInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.size());
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+
+    VkResult allocResult = vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data());
+    if (allocResult != VK_SUCCESS) {
+        WS::logError(allocResult, "Command Buffer Allocation: ");
+        throw std::runtime_error("Command Buffer Failed To Allocate");
+    }
 
 
-    auto indexBuffer = std::get<0>(IndexBufferObjects);
-    auto indices = std::get<1>(IndexBufferObjects);
+    for (int i = 0; i < commandBuffers.size(); i++) {
+        VkCommandBufferBeginInfo beginfo{};
+        beginfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginfo.pInheritanceInfo = nullptr;
+        beginfo.flags = 0;
+
+        if (vkBeginCommandBuffer(commandBuffers[i], &beginfo) != VK_SUCCESS) {
+            throw std::runtime_error("Failed To Begin Recording Of Command Buffers");
+        }
+
+        VkRenderPassBeginInfo renderPassInfo{};
+        renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        renderPassInfo.renderPass = renderPass;
+        renderPassInfo.framebuffer = framebuffers[i];
+        renderPassInfo.renderArea.offset = {0, 0};
+        renderPassInfo.renderArea.extent = extent;
+
+        VkClearValue clearColor = {0.02f, 0.02f, 0.02f, 1.0f};
+        renderPassInfo.clearValueCount = 1;
+        renderPassInfo.pClearValues = &clearColor;
+
+        vkCmdBeginRenderPass(commandBuffers[i], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+    }
+    return commandBuffers;
+}
+
+void WS::stopCmdBufferRecording(WS::CommandBuffers commandBuffers) {
+    for (int i = 0; i < commandBuffers.size(); i++) {
+        vkCmdEndRenderPass(commandBuffers[i]);
+        if (vkEndCommandBuffer(commandBuffers[i]) != VK_SUCCESS) {
+            throw std::runtime_error("failed to record command buffer!");
+        }
+    }
+}
+void WS::resetCommandBuffers(VkDevice device, VkCommandPool commandPool) {
+    vkResetCommandPool(device, commandPool, 0);
+}
+
+
+WS::CommandBuffers WS::createCommandBuffers(VkDevice device, VkCommandPool commandPool, WS::Framebuffers framebuffers, VkRenderPass renderPass, VkPipeline graphicsPipeline, VkExtent2D extent, 
+    VkBuffer vertexBuffer, std::vector<uint16_t> indices, WS::BufferObjects indexBuffer, WS::DescriptorSets descriptorSet, VkPipelineLayout* pipelineLayout) {
+    
+
+
 
 
 
@@ -1075,11 +1189,27 @@ WS::CommandBuffers WS::createCommandBuffers(VkDevice device, VkCommandPool comma
             VkDeviceSize offsets[] = {0};
             vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, vertexBuffers, offsets);
         }
-        if (indexBuffer != VK_NULL_HANDLE && indices.size() > 0) {
-            vkCmdBindIndexBuffer(commandBuffers[i], indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+
+    
+        float yOff = -0.2f;
+
+
+        if (indexBuffer.Buffer != VK_NULL_HANDLE && indices.size() > 0) {
+            vkCmdBindIndexBuffer(commandBuffers[i], indexBuffer.Buffer, 0, VK_INDEX_TYPE_UINT16);
             vkCmdDrawIndexed(commandBuffers[i], static_cast<uint32_t>(indices.size()), 1,0,0,0);
         } else {
-            vkCmdDraw(commandBuffers[i], 3, 1, 0, 0);
+            if (pipelineLayout != VK_NULL_HANDLE) {
+                for (int j = 0; j < 4; j++) {
+                    WS::PushConstantData push{};
+                    push.offset = {0.0f,yOff * j};
+                    push.color = {0.0f,0.0f,0.2f * (j + 1)};
+                
+                    vkCmdPushConstants(commandBuffers[i], *pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(WS::PushConstantData), &push);
+                    vkCmdDraw(commandBuffers[i],3,1,0,0);
+                }
+            } else {
+                vkCmdDraw(commandBuffers[i], 3, 1, 0, 0);
+            }
         }
 
 
@@ -1087,6 +1217,8 @@ WS::CommandBuffers WS::createCommandBuffers(VkDevice device, VkCommandPool comma
             vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, *pipelineLayout, 0, 1, &descriptorSet[i], 0, nullptr);
         }
         
+
+
         vkCmdEndRenderPass(commandBuffers[i]);
         if (vkEndCommandBuffer(commandBuffers[i]) != VK_SUCCESS) {
             throw std::runtime_error("failed to record command buffer!");
