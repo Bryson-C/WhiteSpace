@@ -1,5 +1,5 @@
 #include "Engine/Engine.hpp"
-
+// please dont use this. its not a good idea. I forgot to fix a memory leak imvolving command buffers and not freeing them ( or something like that )
 
 void recreateSwapchain(WS::Devices Devices, WS::SurfaceObjects SurfaceObjects, WS::QueueList QueueList, WS::Queue& gQueue, WS::Queue& pQueue,
                         VkSwapchainKHR& Swapchain ,VkRenderPass& RenderPass, VkPipelineLayout& PipelineLayout, VkPipeline& GraphicsPipeline,
