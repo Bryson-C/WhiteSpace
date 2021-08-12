@@ -158,7 +158,7 @@ int main() {
             vkCmdBindIndexBuffer(CommandBuffers[imageIndex], iBuffer.Buffer, 0, VK_INDEX_TYPE_UINT16);
             WS::PushConstantData push {{0.0f,0.0f},{0.0f,0.0f,0.0f}};
             vkCmdPushConstants(CommandBuffers[imageIndex], pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(WS::PushConstantData), &push);
-            vkCmdDrawIndexed(CommandBuffers[imageIndex], sizeof(vertices[0]) * vertices.size(), 1, 0, 0, 0);
+            vkCmdDrawIndexed(CommandBuffers[imageIndex], indices.size(), 1, 0, 0, 0);
 
 
             WS::stopCmdBufferRecording(CommandBuffers[imageIndex]);
