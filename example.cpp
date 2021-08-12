@@ -18,13 +18,9 @@ void recreateSwapchain(WS::Devices Devices, WS::SurfaceObjects SurfaceObjects, W
     WS::destroyRenderPass(RenderPass, Device);
     WS::destroyCommandBuffers(CommandPool, CommandBuffers, Device);
     vkResetCommandPool(Device, CommandPool, 0);
-    printf("check\n");
     WS::destroyCommandPool(CommandPool, Device);    
-    printf("check\n");
     WS::destroyImageViews(ImageViews, Device);
-    printf("check\n");
     WS::destroySwapchain(Swapchain, Device);
-    printf("check\n");
         
 
 
@@ -35,6 +31,7 @@ void recreateSwapchain(WS::Devices Devices, WS::SurfaceObjects SurfaceObjects, W
     vkGetDeviceQueue(Device, gQueue.Index, 0, &gQueue.Queue);
     vkGetDeviceQueue(Device, pQueue.Index, 0, &pQueue.Queue);
     
+    // ignore Descriptor stuff. it is a work in progress
     //auto DescriptorSetLayout = WS::createDescriptorSetLayout(Device);
     //auto DescriptorPool = WS::createDescriptorPool(Device, Images);
     //auto DescriptorSets = WS::createDescriptorSet(Device, DescriptorPool, DescriptorSetLayout, Images, );
@@ -47,7 +44,6 @@ void recreateSwapchain(WS::Devices Devices, WS::SurfaceObjects SurfaceObjects, W
     CommandPool = WS::createCommandPool(Device, gQueue.Index, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 }
 
-// TODO: Figure Out How To Remove Linker Errors
 
 
 
@@ -60,17 +56,7 @@ int main() {
         {{0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
         {{-1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}}
     };
-    /*const std::vector<WS::vertex> vertices {
-        {{-1.0f, -1.0f}, {1.0f, 0.0f, 0.0f}},
-        {{0.0f, -1.0f}, {0.0f, 1.0f, 0.0f}},
-        {{0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
-        {{-1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}},
 
-        {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-        {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-        {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-        {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
-    };*/
 
     std::vector<uint16_t> indices {0,1,2,2,3,0};
 
@@ -124,22 +110,8 @@ int main() {
     WS::destroyBuffer(vsBuffer, Device);
 
 
-    //auto CommandBuffers = WS::createCommandBuffers(Device, CommandPool, FrameBuffers, RenderPass, GraphicsPipeline, Extent, vBuffer.Buffer, indices, iBuffer);
+   
     auto CommandBuffers = WS::createCommandBuffers(FrameBuffers);
-    
-    /*for (int i = 0; i < FrameBuffers.size(); i++) { // remake recording function for recording 1 command buffer
-        WS::startCmdBufferRecording(FrameBuffers, CommandBuffers, CommandPool, Device, RenderPass, Extent);
-        vkCmdBindPipeline(CommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipeline);
-        VkDeviceSize offsets[] {0};
-        vkCmdBindVertexBuffers(CommandBuffers[i], 0, 1, &vBuffer.Buffer, offsets);
-        vkCmdBindIndexBuffer(CommandBuffers[i], iBuffer.Buffer, 0, VK_INDEX_TYPE_UINT16);
-        
-
-        WS::PushConstantData push {{0.0f,0.0f}, {0.0f,0.0f,0.0f}};
-        vkCmdPushConstants(CommandBuffers[i], pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(WS::PushConstantData), &push);
-        vkCmdDrawIndexed(CommandBuffers[i], static_cast<uint32_t>(vertices.size()), 1, 0, 0, 0);
-        WS::stopCmdBufferRecording(CommandBuffers);
-    }*/
 
 
 
@@ -259,15 +231,6 @@ int main() {
             }
 
             int delayTime = (1000/FPS - (clock()-presentTime));
-            //printf("delayTime: %i\n", delayTime);
-            //if (fps < FPS) {
-            //    if (delayTime < 0) { delayTime = 0; }
-            //    //_sleep(delayTime); // Remake Frame Rate Limiter
-            //    std::this_thread::sleep_for(std::chrono::milliseconds(delayTime));
-            //}
-            //auto pauseTime = clock();
-            //std::this_thread::sleep_for(std::chrono::milliseconds(delayTime));
-            //printf("ClockTime: %i Delay: %i\n", clock()-pauseTime,delayTime);
             currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 
 
