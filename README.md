@@ -2,5 +2,6 @@
 Personal Vulkan
  - Made To Prove A Point (I Can Respect OpenGL But I Dislike Using It)
  
- - Todo: Fix Refresh Rate Getting Lower As The Program Gets Older ( this (i think) is due to the fact that the command buffer keeps on recording drawing commmands rather then reseting itself)
-
+ - TODO: Draw Multiple Objects Easier
+ - TODO: Descriptor Sets
+ - TODO: Make Push Constants Optional (you dont need to use them but you get a validation error)
