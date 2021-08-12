@@ -1,9 +1,11 @@
+#pragma once
 #include "Engine/Engine.hpp"
-// please dont use this. its not a good idea. I forgot to fix a memory leak imvolving command buffers and not freeing them ( or something like that )
+#include <chrono>
+#include <thread>
 
 void recreateSwapchain(WS::Devices Devices, WS::SurfaceObjects SurfaceObjects, WS::QueueList QueueList, WS::Queue& gQueue, WS::Queue& pQueue,
                         VkSwapchainKHR& Swapchain ,VkRenderPass& RenderPass, VkPipelineLayout& PipelineLayout, VkPipeline& GraphicsPipeline,
-                         WS::Framebuffers& FrameBuffers, WS::CommandBuffers CommandBuffers,VkCommandPool& CommandPool, VkFormat& Format, VkExtent2D& Extent, WS::ImageList Images,
+                         WS::Framebuffers& FrameBuffers, WS::CommandBuffers& CommandBuffers, VkCommandPool& CommandPool, VkFormat& Format, VkExtent2D& Extent, WS::ImageList Images,
                          WS::ImageViews ImageViews
 ) {
     auto Device = Devices.Device;
@@ -11,16 +13,19 @@ void recreateSwapchain(WS::Devices Devices, WS::SurfaceObjects SurfaceObjects, W
 
 
     vkDeviceWaitIdle(Device);
-    WS::resetCommandBuffers(Device, CommandPool);
     WS::destroyFrameBuffers(FrameBuffers, Device);
     WS::destroyPipeline(GraphicsPipeline, Device);
     WS::destroyRenderPass(RenderPass, Device);
     WS::destroyCommandBuffers(CommandPool, CommandBuffers, Device);
+    vkResetCommandPool(Device, CommandPool, 0);
+    printf("check\n");
     WS::destroyCommandPool(CommandPool, Device);    
+    printf("check\n");
     WS::destroyImageViews(ImageViews, Device);
+    printf("check\n");
     WS::destroySwapchain(Swapchain, Device);
-    
-    
+    printf("check\n");
+        
 
 
     Swapchain = WS::createSwapchain(Devices, SurfaceObjects, QueueList, Format, Extent, gQueue.Index, pQueue.Index);
@@ -34,6 +39,7 @@ void recreateSwapchain(WS::Devices Devices, WS::SurfaceObjects SurfaceObjects, W
     //auto DescriptorPool = WS::createDescriptorPool(Device, Images);
     //auto DescriptorSets = WS::createDescriptorSet(Device, DescriptorPool, DescriptorSetLayout, Images, );
 
+
     RenderPass = WS::createRenderPass(Device, Format);
     auto ShaderProgram = WS::createShaderProgram(Device, "C:\\Users\\Owner\\Documents\\code\\whitespace_test\\vertex.spv", "C:\\Users\\Owner\\Documents\\code\\whitespace_test\\fragment.spv");
     GraphicsPipeline = WS::createGraphicsPipeline(Devices, ShaderProgram, RenderPass, Extent, PipelineLayout, DRAWMODE_FILL);
@@ -41,29 +47,37 @@ void recreateSwapchain(WS::Devices Devices, WS::SurfaceObjects SurfaceObjects, W
     CommandPool = WS::createCommandPool(Device, gQueue.Index, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 }
 
-
+// TODO: Figure Out How To Remove Linker Errors
 
 
 
 int main() {
 
 
-    //const std::vector<WS::vertex> vertices {
-    //    {{-0.5f, 0.5f},  {1.0f,0.0f,0.0f}},
-    //    {{0.0f, -0.5f},  {0.0f,1.0f,0.0f}},
-    //    {{0.5f,  0.5f},  {0.0f,0.0f,1.0f}}
-    //}
     const std::vector<WS::vertex> vertices {
+        {{-1.0f, -1.0f}, {1.0f, 0.0f, 0.0f}},
+        {{0.0f, -1.0f}, {0.0f, 1.0f, 0.0f}},
+        {{0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
+        {{-1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}}
+    };
+    /*const std::vector<WS::vertex> vertices {
+        {{-1.0f, -1.0f}, {1.0f, 0.0f, 0.0f}},
+        {{0.0f, -1.0f}, {0.0f, 1.0f, 0.0f}},
+        {{0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
+        {{-1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}},
+
         {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
         {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
         {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
         {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
-    };
+    };*/
+
     std::vector<uint16_t> indices {0,1,2,2,3,0};
 
 
     auto Instance = WS::createInstance(true);
-    auto SurfaceObjects = WS::createWindow("Window", 800, 600, Instance);
+    const char* WindowTitle = "Window";
+    auto SurfaceObjects = WS::createWindow(WindowTitle, 800, 600, Instance);
     auto PhysicalDevice = WS::findPhysicalDevice(Instance);
     auto QueueList = WS::findQueues(PhysicalDevice);
     auto Device = WS::createDevice(PhysicalDevice, QueueList);
@@ -101,14 +115,31 @@ int main() {
     auto GraphicsPipeline = WS::createGraphicsPipeline(Devices, ShaderProgram, RenderPass, Extent, pipelineLayout, DRAWMODE_FILL);
     auto FrameBuffers = WS::createFrameBuffers(Device, ImageViews, RenderPass, Extent);
     auto CommandPool = WS::createCommandPool(Device, gQueue.Index, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+    auto TransferPool = WS::createCommandPool(Device, pQueue.Index);
 
-
-    WS::copyBuffer(Device, vsBuffer, vBuffer, sizeof(vertices[0]) * vertices.size(), CommandPool, gQueue.Queue);
-    WS::copyBuffer(Device, isBuffer, iBuffer, sizeof(indices[0]) * indices.size(), CommandPool, gQueue.Queue);
+    WS::copyBuffer(Device, vsBuffer, vBuffer, sizeof(vertices[0]) * vertices.size(), TransferPool, pQueue.Queue);
+    WS::copyBuffer(Device, isBuffer, iBuffer, sizeof(indices[0]) * indices.size(), TransferPool, pQueue.Queue);
     
     WS::destroyBuffer(isBuffer, Device);
     WS::destroyBuffer(vsBuffer, Device);
-    //auto CommandBuffers = WS::createCommandBuffers(Device, CommandPool, FrameBuffers, RenderPass, GraphicsPipeline, Extent, vBuffer.Buffer, {}, {}, {}, &pipelineLayout);
+
+
+    //auto CommandBuffers = WS::createCommandBuffers(Device, CommandPool, FrameBuffers, RenderPass, GraphicsPipeline, Extent, vBuffer.Buffer, indices, iBuffer);
+    auto CommandBuffers = WS::createCommandBuffers(FrameBuffers);
+    
+    /*for (int i = 0; i < FrameBuffers.size(); i++) { // remake recording function for recording 1 command buffer
+        WS::startCmdBufferRecording(FrameBuffers, CommandBuffers, CommandPool, Device, RenderPass, Extent);
+        vkCmdBindPipeline(CommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipeline);
+        VkDeviceSize offsets[] {0};
+        vkCmdBindVertexBuffers(CommandBuffers[i], 0, 1, &vBuffer.Buffer, offsets);
+        vkCmdBindIndexBuffer(CommandBuffers[i], iBuffer.Buffer, 0, VK_INDEX_TYPE_UINT16);
+        
+
+        WS::PushConstantData push {{0.0f,0.0f}, {0.0f,0.0f,0.0f}};
+        vkCmdPushConstants(CommandBuffers[i], pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(WS::PushConstantData), &push);
+        vkCmdDrawIndexed(CommandBuffers[i], static_cast<uint32_t>(vertices.size()), 1, 0, 0, 0);
+        WS::stopCmdBufferRecording(CommandBuffers);
+    }*/
 
 
 
@@ -116,59 +147,59 @@ int main() {
     auto ImageSemaphores     = WS::createSemaphores(MAX_FRAMES_IN_FLIGHT, Device);
     auto RenderSemaphores    = WS::createSemaphores(MAX_FRAMES_IN_FLIGHT, Device);
     auto Fences              = WS::createFences(MAX_FRAMES_IN_FLIGHT, Device);
-    WS::FenceList ImageFence; ImageFence.resize(Images.size(), VK_NULL_HANDLE);   
+    vkWaitForFences(Device, 2, Fences.data(), VK_TRUE, UINT64_MAX);
+    vkResetFences(Device, 2, Fences.data());
     int currentFrame = 0;
 
+
+    const int FPS = 200;
     int fps = 0;
     int fpsTime = clock();
     while(WS::windowIsOpen(SurfaceObjects)) {
         auto presentTime = clock();
         glfwPollEvents();
 
+
         
-        auto CommandBuffers = WS::startCmdBufferRecording(FrameBuffers, CommandPool, Device, RenderPass, Extent);
-        for (int i = 0; i < FrameBuffers.size(); i++) {
-            vkCmdBindPipeline(CommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipeline);
-            VkDeviceSize offsets[] {0};
-            vkCmdBindVertexBuffers(CommandBuffers[i], 0, 1, &vBuffer.Buffer, offsets);
-            vkCmdBindIndexBuffer(CommandBuffers[i], iBuffer.Buffer, 0, VK_INDEX_TYPE_UINT16);
-            
-
-            for (int j = 0; j < 4; j++) {
-                WS::PushConstantData push{};
-                push.offset = {0.0f, 0.2f * (j + 1)};
-                push.color = {0.0f, 0.0f, 0.2f * (j+1)};
-
-                vkCmdPushConstants(CommandBuffers[i], pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(WS::PushConstantData), &push);
-                vkCmdDrawIndexed(CommandBuffers[i], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
-                //vkCmdDraw(CommandBuffers[i], 3, 1, 0, 0);
-            }
-            vkCmdDrawIndexed(CommandBuffers[i], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
-            //vkCmdDraw(CommandBuffers[i], 3, 1, 0, 0);
-        }
-        WS::stopCmdBufferRecording(CommandBuffers);
 
 
-        int w,h;
+        
+        
+
+
+        int w, h;
         glfwGetFramebufferSize(SurfaceObjects.Window,&w,&h);
         if (w <= 0 || h <= 0) {
             
         } else {
-            vkWaitForFences(Device, 1, &Fences[currentFrame], VK_TRUE, UINT64_MAX);
-            vkResetFences(Device, 1, &Fences[currentFrame]);
             
-
             
             uint32_t imageIndex = 0;
             VkResult imageResult = vkAcquireNextImageKHR(Device, Swapchain, UINT64_MAX, ImageSemaphores[currentFrame], nullptr, &imageIndex);
+
+
+             
+            WS::startCmdBufferRecording(FrameBuffers[imageIndex], CommandBuffers[imageIndex], CommandPool, Device, RenderPass, Extent);
+            vkCmdBindPipeline(CommandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipeline);
+            VkDeviceSize offset = {0};
+            vkCmdBindVertexBuffers(CommandBuffers[imageIndex], 0, 1, &vBuffer.Buffer, &offset);
+            vkCmdBindIndexBuffer(CommandBuffers[imageIndex], iBuffer.Buffer, 0, VK_INDEX_TYPE_UINT16);
+            WS::PushConstantData push {{0.0f,0.0f},{0.0f,0.0f,0.0f}};
+            vkCmdPushConstants(CommandBuffers[imageIndex], pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(WS::PushConstantData), &push);
+            vkCmdDrawIndexed(CommandBuffers[imageIndex], sizeof(vertices[0]) * vertices.size(), 1, 0, 0, 0);
+
+
+            WS::stopCmdBufferRecording(CommandBuffers[imageIndex]);
+            
+            
 
             if (imageResult == VK_ERROR_OUT_OF_DATE_KHR) {
                 recreateSwapchain(Devices, SurfaceObjects, QueueList, gQueue, pQueue, Swapchain, RenderPass, pipelineLayout, GraphicsPipeline, FrameBuffers, CommandBuffers, CommandPool, ImageFormat, Extent, Images, ImageViews);
             }
             else if (imageResult != VK_SUCCESS && imageResult == VK_SUBOPTIMAL_KHR) {
+                WS::logError(imageResult, "Image Aquisition: ");
                 throw std::runtime_error("Failed To Get Swapchain Image");
             }
-
 
 
             VkSubmitInfo submitinfo{};
@@ -188,7 +219,6 @@ int main() {
             submitinfo.pSignalSemaphores = signalSemaphore;
 
 
-
             VkResult SubmitResult = vkQueueSubmit(gQueue.Queue, 1, &submitinfo, Fences[currentFrame]);
             if (SubmitResult != VK_SUCCESS) {
                 WS::logError(SubmitResult, "Queue Submition: ");
@@ -205,36 +235,59 @@ int main() {
             presentInfo.pImageIndices = &imageIndex;
             presentInfo.pResults = nullptr;
 
+            
             VkResult presentResult = vkQueuePresentKHR(pQueue.Queue, &presentInfo);
+            if (presentResult != VK_SUCCESS) {
+                WS::logError(presentResult, "Queue Presentation: ");
+                throw std::runtime_error("Failed To Present Queue");
+            }
+
+
+            vkWaitForFences(Device, 1, &Fences[currentFrame], VK_TRUE, UINT64_MAX);
+            vkResetFences(Device, 1, &Fences[currentFrame]);
+            //vkResetCommandBuffer(CommandBuffers[imageIndex], 0);
+            vkFreeCommandBuffers(Device, CommandPool, 1, &CommandBuffers[imageIndex]);
 
             
-            
 
-            
+
             if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) {
                 recreateSwapchain(Devices, SurfaceObjects, QueueList, gQueue, pQueue, Swapchain, RenderPass, pipelineLayout, GraphicsPipeline, FrameBuffers, CommandBuffers, CommandPool, ImageFormat, Extent, Images, ImageViews);
             }
             else if (presentResult != VK_SUCCESS ) {
                 throw std::runtime_error("Failed To Get Swapchain Image");
             }
-        }
-        //WS::resetCommandBuffers(Device, CommandPool);
 
+            int delayTime = (1000/FPS - (clock()-presentTime));
+            //printf("delayTime: %i\n", delayTime);
+            //if (fps < FPS) {
+            //    if (delayTime < 0) { delayTime = 0; }
+            //    //_sleep(delayTime); // Remake Frame Rate Limiter
+            //    std::this_thread::sleep_for(std::chrono::milliseconds(delayTime));
+            //}
+            //auto pauseTime = clock();
+            //std::this_thread::sleep_for(std::chrono::milliseconds(delayTime));
+            //printf("ClockTime: %i Delay: %i\n", clock()-pauseTime,delayTime);
+            currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 
-        currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 
         
-        fps++;
-        if (clock()-fpsTime > 1000) {
-            printf("FPS: %i\n", fps);
-            fps = 0;
-            fpsTime = clock();
-
-            if ((clock()-presentTime) > 2) {
-                printf("Present Time: %i\n", (clock()-presentTime));
+            fps++;
+            
+            if (clock()-fpsTime > 1000) {
+                printf("FPS: %i\n", fps);
+                fps = 0;
+                fpsTime = clock();
             }
+            WS::swapWindowBuffers(SurfaceObjects);
         }
-        WS::swapWindowBuffers(SurfaceObjects);
+
+        
+        
+        
+        
+
+    
     }
 
 
