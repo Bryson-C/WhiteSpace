@@ -1079,37 +1079,40 @@ VkCommandPool WS::createCommandPool(VkDevice device, uint32_t queue, uint32_t fl
     return commandPool;
 }
 
+WS::CommandBuffers WS::createCommandBuffers(WS::Framebuffers frameBuffers) {
+    WS::CommandBuffers commandBuffers; commandBuffers.resize(frameBuffers.size());
+    return commandBuffers;
+}
 
-WS::CommandBuffers WS::startCmdBufferRecording(WS::Framebuffers framebuffers, VkCommandPool commandPool, VkDevice device, VkRenderPass& renderPass, VkExtent2D extent) {
-    WS::CommandBuffers commandBuffers; commandBuffers.resize(framebuffers.size());
-    
+void WS::startCmdBufferRecording(VkFramebuffer framebuffer, VkCommandBuffer& commandBuffer, VkCommandPool commandPool, VkDevice device, VkRenderPass& renderPass, VkExtent2D extent) {
+
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.commandPool = commandPool;
-    allocInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.size());
+    allocInfo.commandBufferCount = 1;
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 
-    VkResult allocResult = vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data());
+    VkResult allocResult = vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer);
     if (allocResult != VK_SUCCESS) {
         WS::logError(allocResult, "Command Buffer Allocation: ");
         throw std::runtime_error("Command Buffer Failed To Allocate");
     }
 
 
-    for (int i = 0; i < commandBuffers.size(); i++) {
+
         VkCommandBufferBeginInfo beginfo{};
         beginfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         beginfo.pInheritanceInfo = nullptr;
         beginfo.flags = 0;
 
-        if (vkBeginCommandBuffer(commandBuffers[i], &beginfo) != VK_SUCCESS) {
+        if (vkBeginCommandBuffer(commandBuffer, &beginfo) != VK_SUCCESS) {
             throw std::runtime_error("Failed To Begin Recording Of Command Buffers");
         }
 
         VkRenderPassBeginInfo renderPassInfo{};
         renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         renderPassInfo.renderPass = renderPass;
-        renderPassInfo.framebuffer = framebuffers[i];
+        renderPassInfo.framebuffer = framebuffer;
         renderPassInfo.renderArea.offset = {0, 0};
         renderPassInfo.renderArea.extent = extent;
 
@@ -1117,21 +1120,14 @@ WS::CommandBuffers WS::startCmdBufferRecording(WS::Framebuffers framebuffers, Vk
         renderPassInfo.clearValueCount = 1;
         renderPassInfo.pClearValues = &clearColor;
 
-        vkCmdBeginRenderPass(commandBuffers[i], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-    }
-    return commandBuffers;
+        vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 }
 
-void WS::stopCmdBufferRecording(WS::CommandBuffers commandBuffers) {
-    for (int i = 0; i < commandBuffers.size(); i++) {
-        vkCmdEndRenderPass(commandBuffers[i]);
-        if (vkEndCommandBuffer(commandBuffers[i]) != VK_SUCCESS) {
-            throw std::runtime_error("failed to record command buffer!");
-        }
+void WS::stopCmdBufferRecording(VkCommandBuffer commandBuffers) {
+    vkCmdEndRenderPass(commandBuffers);
+    if (vkEndCommandBuffer(commandBuffers) != VK_SUCCESS) {
+        throw std::runtime_error("failed to record command buffer!");
     }
-}
-void WS::resetCommandBuffers(VkDevice device, VkCommandPool commandPool) {
-    vkResetCommandPool(device, commandPool, 0);
 }
 
 
@@ -1263,6 +1259,68 @@ WS::FenceList WS::createFences(const size_t fenceCount, VkDevice device) {
     return fences;
 }
 
+
+void createImage(WS::Devices Devices, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, WS::Texture& Texture) {
+    VkImageCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    createInfo.imageType = VK_IMAGE_TYPE_2D;
+    createInfo.extent.depth = 1;
+    createInfo.extent.width = width;
+    createInfo.extent.height = height;
+    createInfo.mipLevels = 1;
+    createInfo.arrayLayers = 1;
+    createInfo.format = format;
+    createInfo.tiling = tiling;
+    createInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    createInfo.usage = usage;
+    createInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    createInfo.samples =  VK_SAMPLE_COUNT_1_BIT;
+    createInfo.flags = 0;
+
+    auto result = vkCreateImage(Devices.Device, &createInfo, nullptr, &Texture.Image);
+    if (result != VK_SUCCESS) {
+        WS::logError(result, "Texture: ");
+        throw std::runtime_error("Texture Failed Creation");
+    }
+
+    VkMemoryRequirements memReq;
+    vkGetImageMemoryRequirements(Devices.Device, Texture.Image, &memReq);
+    
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memReq.size;
+    allocInfo.memoryTypeIndex = WS::findMemoryType(Devices.PhysicalDevice, memReq.memoryTypeBits, properties);
+
+    auto allocResult = vkAllocateMemory(Devices.Device, &allocInfo, nullptr, &Texture.Memory);
+    if (allocResult != VK_SUCCESS) {
+        WS::logError(allocResult, "Image Memory Allocation: ");
+        throw std::runtime_error("Failed To Allocate Memory For Image");
+    }
+    vkBindImageMemory(Devices.Device, Texture.Image, Texture.Memory, 0);
+
+}
+
+void WS::createTextureImage(WS::Devices Devices, const char* path) {
+    int width, height, channels;
+    //stbi_uc* pixels = stbi_load(path, &width, &height, &channels, STBI_rgb_alpha);
+    VkDeviceSize imageSize = width *height * 4;
+    //if (!pixels) {
+    //    throw std::runtime_error("Image Failed To Load");
+    //}
+
+    WS::BufferObjects StagingBuffer = WS::createStagingBuffer(Devices, imageSize);
+    void* data;
+    vkMapMemory(Devices.Device, StagingBuffer.Memory, 0, imageSize, 0, &data);
+    //memcpy(data, pixels, static_cast<size_t>(imageSize));
+    vkUnmapMemory(Devices.Device, StagingBuffer.Memory);
+    //stbi_image_free(pixels);
+
+    WS::Texture Texture;
+    
+    //createImage(Devices, width, height, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, Texture);
+
+
+}
 
 
 

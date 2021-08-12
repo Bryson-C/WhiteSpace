@@ -1,5 +1,9 @@
+#pragma once
+
 #include "../lib/VKInclude/vulkan/vulkan.h"
 #include "../lib/GLFW/include/glfw3.h"
+//#define STB_IMAGE_IMPLEMENTATION
+//#include "../lib/stb-master/stb_image.h"
 #include "../lib/glm-master/glm/glm.hpp"
 #include <iostream>
 #include <vector>
@@ -78,7 +82,7 @@ namespace WS {
     typedef std::vector<VkFence>                                            FenceList;
     typedef struct {const void* data; VkDeviceSize Size; VkBuffer Buffer;}  Buffer;
     typedef struct {}                                                       VulkanState;
-
+    typedef struct {VkImage Image; VkDeviceMemory Memory;}                  Texture;
 
     typedef struct { alignas(16) glm::vec2 offset; alignas(16) glm::vec3 color; } PushConstantData;
 
@@ -103,6 +107,7 @@ namespace WS {
     VkCommandPool           createCommandPool(VkDevice Device, uint32_t queue, uint32_t flags = 0);
     CommandBuffers          createCommandBuffers(VkDevice device, VkCommandPool commandPool, WS::Framebuffers framebuffers, VkRenderPass renderPass, VkPipeline graphicsPipeline, VkExtent2D extent, 
                                                 VkBuffer vertexBuffer = VK_NULL_HANDLE, std::vector<uint16_t> indices = {}, WS::BufferObjects IndexBuffer = {}, WS::DescriptorSets descriptorSet = {}, VkPipelineLayout* pipelineLayout = nullptr);
+    CommandBuffers          createCommandBuffers(Framebuffers FrameBuffers);
     VkBuffer                createBuffer(WS::Devices Devices, VkBufferUsageFlags Usage, VkMemoryPropertyFlags Properties, VkDeviceMemory& BufferMemory, VkDeviceSize Size);
     BufferObjects           createStagingBuffer(WS::Devices Devices, VkDeviceSize SizeOfData);
     BufferObjects           createVertexBuffer(WS::Devices Devices, VkDeviceSize SizeOfData);
@@ -128,9 +133,11 @@ namespace WS {
     void                    copyBuffer(VkDevice Device, BufferObjects srcBuffer, BufferObjects dstBuffer, VkDeviceSize Size, VkCommandPool CommandPool, VkQueue Queue);
     
     
-    WS::CommandBuffers      startCmdBufferRecording(WS::Framebuffers framebuffers, VkCommandPool commandPool, VkDevice device, VkRenderPass& renderPass, VkExtent2D extent);
-    void                    stopCmdBufferRecording(WS::CommandBuffers commandBuffers);
-    void                    resetCommandBuffers(VkDevice device, VkCommandPool commandPool);
+    void                    startCmdBufferRecording(VkFramebuffer framebuffer, VkCommandBuffer& commandBuffer, VkCommandPool commandPool, VkDevice device, VkRenderPass& renderPass, VkExtent2D extent);
+    void                    stopCmdBufferRecording(VkCommandBuffer commandBuffers);
+
+
+    void                    createTextureImage(WS::Devices, const char* path);
 
 
     // destroying objects
@@ -143,7 +150,7 @@ namespace WS {
     inline void             destroyRenderPass(VkRenderPass renderPass, VkDevice device) { vkDestroyRenderPass(device, renderPass, nullptr); }
     inline void             destroyFrameBuffers(std::vector<VkFramebuffer> frameBuffers, VkDevice device) { for (auto i : frameBuffers) { vkDestroyFramebuffer(device, i, nullptr); } }
     inline void             destroyCommandBuffers(VkCommandPool commandPool, std::vector<VkCommandBuffer> commandBuffers, VkDevice device) { vkFreeCommandBuffers(device, commandPool, static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data()); }
-    inline void             destroyCommandPool(VkCommandPool commandPool, VkDevice device) { vkDestroyCommandPool(device, commandPool, nullptr); }
+    inline void             destroyCommandPool(VkCommandPool commandPool, VkDevice device) { vkResetCommandPool(device, commandPool, 0); vkDestroyCommandPool(device, commandPool, nullptr); }
     inline void             destroySemaphores(std::vector<VkSemaphore> semaphores, VkDevice device) { for (auto i : semaphores) { vkDestroySemaphore(device, i, nullptr); }}
     inline void             destroyFences(std::vector<VkFence> fences, VkDevice device) { for (auto i : fences) { vkWaitForFences(device, 1, &i, VK_TRUE, UINT64_MAX); vkDestroyFence(device, i, nullptr); }}
     inline void             destroyBuffer(VkBuffer buffer, VkDeviceMemory deviceMemory, VkDevice device) { vkDestroyBuffer(device, buffer, nullptr); vkFreeMemory(device, deviceMemory, nullptr); }
