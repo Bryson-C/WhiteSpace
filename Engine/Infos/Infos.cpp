@@ -468,4 +468,77 @@ namespace Info {
         info.pSetLayouts = layouts.data();
         return info;
     }
+    VkSamplerCreateInfo SamplerCreateInfo(float maxAnisotropy) {
+        VkSamplerCreateInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        info.pNext = VK_NULL_HANDLE;
+        info.flags = 0;
+        info.magFilter = FILTER_LINEAR;
+        info.minFilter = FILTER_LINEAR;
+        info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        info.addressModeU = SAMPLER_REPEAT;
+        info.addressModeV = SAMPLER_REPEAT;
+        info.addressModeW = SAMPLER_REPEAT;
+        info.mipLodBias = 0.0f;
+        if (maxAnisotropy > 0.0f) {
+            info.anisotropyEnable = VK_TRUE;
+            info.maxAnisotropy = maxAnisotropy;
+        } else {
+            info.anisotropyEnable = VK_FALSE;
+            info.maxAnisotropy = 1.0f;
+        }
+        info.compareEnable = VK_FALSE;
+        info.compareOp = VK_COMPARE_OP_ALWAYS;
+        info.minLod = 0.0f;
+        info.maxLod = 0.0f;
+        info.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
+        info.unnormalizedCoordinates = VK_FALSE;
+        return info;
+    }
+    VkDescriptorSetLayoutBinding DescriptorLayoutBinding(u32 binding, u32 count, VkDescriptorType type, VkShaderStageFlags stages) {
+        VkDescriptorSetLayoutBinding info{};
+        info.stageFlags = stages;
+        info.pImmutableSamplers = nullptr;
+        info.descriptorType = type;
+        info.descriptorCount = count;
+        info.binding = binding;
+        return info;
+    }
+    VkVertexInputAttributeDescription VertexInputAttributeDescription(u32 binding, u32 loc,  u32 offset, VkFormat format) {
+        VkVertexInputAttributeDescription info{};
+        info.binding = binding;
+        info.offset = offset;
+        info.format = format;
+        info.location = loc;
+        return info;
+    }
+    VkVertexInputBindingDescription VertexInputBindingDescription(u32 binding, u32 stride, VkVertexInputRate inputRate) {
+        VkVertexInputBindingDescription info{};
+        info.binding = binding;
+        info.inputRate = inputRate;
+        info.stride = stride;
+        return info;
+    }
+    VkDescriptorSetLayoutCreateInfo DescriptorLayoutCreateInfo(vector<VkDescriptorSetLayoutBinding> bindings) {
+        VkDescriptorSetLayoutCreateInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        info.flags = 0;
+        info.pNext = nullptr;
+        info.bindingCount = static_cast<u32>(bindings.size());
+        info.pBindings = bindings.data();
+        return info;
+    }
+    VkWriteDescriptorSet DescriptorWrite(VkDescriptorType type, u32 count, u32 binding, VkDescriptorSet& descriptor, VkDescriptorBufferInfo* bufferInfo, VkDescriptorImageInfo* imageInfo) {
+        VkWriteDescriptorSet info{};
+        info.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        info.pNext = nullptr;
+        info.descriptorType = type;
+        info.descriptorCount = count;
+        info.dstArrayElement = 0;
+        info.dstBinding = binding;
+        info.dstSet= descriptor;
+        info.pBufferInfo = bufferInfo;
+        info.pImageInfo = imageInfo;
+        return info;
+    }
 }

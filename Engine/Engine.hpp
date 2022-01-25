@@ -18,16 +18,9 @@
 #include VKPATH
 #include VKHPPPATH
 #include GLFWPATH
-#include <iostream>
-#include <string>
-#include <vector>
-#include <fstream>
-#include <array>
-#include <optional>
-#include <algorithm>
-#include VKPATH
-#include VKHPPPATH
-#include GLFWPATH
+#define GLM_FORCE_RADIANS
+#include "../lib/glm-master/glm/glm.hpp"
+#include "../lib/glm-master/glm/gtc/matrix_transform.hpp"
 #include <iostream>
 #include <string>
 #include <vector>
@@ -42,197 +35,12 @@
 
 
 
+
 template<typename T>
 struct v2 {
     T x,y;
 };
 
-namespace ws {
-
-
-
-    // Helper Objects
-    struct ImageArray {
-        vector<VkImage>     Image;
-        vector<VkImageView> View;
-    };
-
-
-
-    // Object Wrappers
-
-    class Instance {
-    private:
-        VkInstance m_Instance;
-        const char *m_InstanceName;
-        bool m_Debug;
-    public:
-        Instance(const char* name = EngineName, bool debug = false);
-        VkInstance get();
-        const char* getName();
-    };
-
-    class Window {
-    private:
-        GLFWwindow* m_Window;
-        VkSurfaceKHR m_Surface;
-    public:
-        Window(ws::Instance& instance, u32 width, u32 height);
-        bool isOpen();
-        void swapBuffers();
-        void pollEvents();
-        GLFWwindow* get();
-        VkSurfaceKHR getSurface();
-        v2<u32> size() const;
-    };
-
-    class Device {
-    private:
-        VkPhysicalDevice m_PhysicalDevice;
-        VkDevice m_Device;
-        u32 m_GraphicsIndex, m_PresentIndex;
-        VkQueue m_GraphicsQueue, m_PresentQueue;
-    public:
-        Device(ws::Instance& instance, Window& window);
-        VkDevice get();
-        VkPhysicalDevice getPhysicalDevice();
-        u32 getGraphicsIndex();
-        VkQueue getGraphicsQueue();
-        VkResult submitQueue(VkSubmitInfo& submitInfo, VkFence fence);
-        VkResult presentQueue(VkPresentInfoKHR& presentInfo);
-        VkResult waitForFences(VkFence* fences, u32 count);
-        VkResult resetFences(VkFence* fences, u32 count);
-        vector<VkSemaphore> createSemaphores(u32 count);
-        vector<VkFence> createFences(u32 count);
-        void waitIdle();
-    };
-
-    // Soon to be parent object of vertex and index buffers
-    class Buffer {
-    protected:
-        VkBuffer m_Buffer;
-        VkDeviceMemory m_Memory;
-    public:
-        Buffer();
-        Buffer(ws::Device device, VkCommandPool pool, VkDeviceSize size, VkBufferUsageFlags bufferType, void* bufferdata);
-        void destroy(ws::Device device);
-        VkBuffer get();
-    };
-
-    class VertexBuffer : public Buffer {
-    public:
-        VertexBuffer(ws::Device device, VkCommandPool pool, VkDeviceSize size, void* vertexdata);
-    };
-
-    class IndexBuffer : public Buffer {
-    public:
-        IndexBuffer(ws::Device device, VkCommandPool pool, VkDeviceSize size, void* indexdata);
-    };
-
-    class UniformBuffer {
-    private:
-        vector<VkBuffer> m_Buffer;
-        vector<VkDeviceMemory> m_Memory;
-        VkDeviceSize m_Size;
-    public:
-        UniformBuffer(ws::Device device, VkCommandPool pool, VkDeviceSize size, u32 count = 1);
-        void update(ws::Device device, void* data, u32 index);
-        VkBuffer* get();
-        VkDeviceSize getSize();
-        vector<VkDeviceMemory> getMem();
-        void destroy(ws::Device device);
-    };
-
-    class CommandBuffer {
-    private:
-        VkCommandPool* m_OwnerPool;
-        vector<VkCommandBuffer> m_Buffers;
-        u32 m_Index;
-    public:
-        CommandBuffer(ws::Device& device, VkCommandPool* owner, u32 count);
-        void nextIndex();
-        void prevIndex();
-        void setIndex(u32 index);
-
-        void record(VkRenderPass renderPass, VkFramebuffer framebuffer, VkExtent2D extent);
-        void stopRecording();
-        void bindPipeline(VkPipeline pipeline, VkPipelineBindPoint bindPoint);
-        void draw(u32 vertexCount, u32 instances, u32 firstVertex, u32 firstInstance);
-        void drawIndexed(u32 indexCount, u32 instances, u32 firstIndex, u32 firstVertex, u32 firstInstance);
-        void bindVertexBuffer(VkBuffer buffer);
-        void bindIndexBuffer(VkBuffer buffer, VkIndexType type = VK_INDEX_TYPE_UINT16);
-        void bindDesciptorSets(VkPipelineLayout layout, VkDescriptorSet set);
-        VkCommandBuffer get(u32 index);
-
-        void freeBuffers(ws::Device device);
-    };
-
-    class CommandPool {
-    private:
-        VkCommandPool m_Pool;
-        CommandBuffer* m_Buffers;
-    public:
-        CommandPool(ws::Device device);
-        CommandBuffer AllocateBuffers(ws::Device& device, u32 count);
-        VkCommandPool get();
-        void destroy(ws::Device device);
-    };
-
-    class Swapchain {
-    private:
-        VkSwapchainKHR m_Swapchain;
-        SurfaceDisplayFormats m_Formats;
-        ws::ImageArray m_Images;
-        vector<VkFramebuffer> m_Framebuffers;
-        void create(ws::Device& device, ws::Window& window);
-        void destroyFramebuffers(ws::Device device);
-        void destroyImageViews(ws::Device device);
-        void destroySwapchain(ws::Device device);
-    public:
-        Swapchain(ws::Device& device, ws::Window& window);
-        VkSwapchainKHR get();
-        VkExtent2D getExtent();
-        u32 getImageCount();
-        SurfaceDisplayFormats getFormats();
-        VkFramebuffer* getFramebuffers();
-        void initializeFramebuffers(ws::Device& device, VkRenderPass& renderPass);
-        u32 getImageIndex(ws::Device device, VkSemaphore& semaphore, Result* result = nullptr);
-    };
-
-
-    class RenderPass {
-    private:
-        VkRenderPass m_RenderPass;
-    public:
-        RenderPass(ws::Device& device, ws::Swapchain& swapchain);
-        VkRenderPass get() const;
-    };
-
-
-
-    class GraphicsPipeline {
-    private:
-        VkPipeline m_Pipeline;
-        VkPipelineLayout m_Layout;
-
-        VkDescriptorSetLayout m_DescriptorLayout;
-        VkDescriptorPool m_Pool;
-        vector<VkDescriptorSet> m_DescriptorSets;
-        void createDescriptor(ws::Device device, ws::UniformBuffer& buffers, u32 count);
-    public:
-        GraphicsPipeline(ws::Device device, ws::Swapchain swapchain, ws::RenderPass renderPass, Shader vShader, Shader fShader);
-        GraphicsPipeline(ws::Device device, ws::Swapchain swapchain, ws::RenderPass renderPass, Shader vShader, Shader fShader,
-                         vector<VkVertexInputAttributeDescription>& attributes, vector<VkVertexInputBindingDescription>& bindings,
-                         ws::UniformBuffer& uniformBuffers);
-        VkPipeline get();
-        VkPipelineLayout getLayout();
-        vector<VkDescriptorSet> getDescriptorSet();
-    };
-
-
-
-    // Helper Functions
-}
 
 
 enum class settings {
@@ -396,7 +204,280 @@ Result EndRenderPass(VkCommandBuffer& Commandbuffer);
 Shader CreateShader(VkDevice device, const std::string& path, VkShaderStageFlagBits type);
 BufferObject CreateBuffer(VkDevice device, VkPhysicalDevice physicalDevice, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags memoryFlag);
 void CopyBuffer(VkDevice device, VkCommandPool pool, VkQueue queue, VkBuffer dst, VkBuffer src, VkDeviceSize size);
+#define CREATE_STAGING_BUFFER(device, physicalDevice, size) \
+    CreateBuffer(device, physicalDevice, size, BUFFER_SENDER, RAM_MEMORY | COHERENT_MEMORY)
 
+namespace ws {
+
+#define UPDATE_UNIFORM_BUFFER(device, uniformBuffers, uniformData, imageIndex) \
+    auto m_Memory = uniformBuffers.getMem();               \
+    void* UNIFORM_UPLOAD; \
+    vkMapMemory(device, m_Memory[imageIndex], 0, uniformBuffers.getSize(), 0, &UNIFORM_UPLOAD); \
+    memcpy(UNIFORM_UPLOAD, &uniformData, uniformBuffers.getSize()); \
+    vkUnmapMemory(device, m_Memory[imageIndex])
+
+#define UPLOAD_BUFFER_TO_MEMORY(device, memory, bufferdata, size) \
+    void* data;                             \
+    vkMapMemory(device, memory, 0, size, 0, &data); \
+    memcpy(data, bufferdata, (size_t) size); \
+    vkUnmapMemory(device, memory)
+
+
+
+
+    // Helper Objects
+    struct ImageArray {
+        vector<VkImage>     Image;
+        vector<VkImageView> View;
+    };
+    struct VertexInputData {
+        vector<VkVertexInputAttributeDescription>& attributes;
+        vector<VkVertexInputBindingDescription>& bindings;
+    };
+    struct UniformDescription {};
+    struct Texture {
+        std::string handle;
+        VkImage Image;
+        VkImageView View;
+        VkDeviceMemory Memory;
+    };
+
+    // Object Wrappers
+
+    class Instance {
+    private:
+        VkInstance m_Instance;
+        const char *m_InstanceName;
+        bool m_Debug;
+    public:
+        Instance(const char* name = EngineName, bool debug = false);
+        VkInstance get();
+        const char* getName();
+    };
+
+    class Window {
+    private:
+        GLFWwindow* m_Window;
+        VkSurfaceKHR m_Surface;
+    public:
+        Window(ws::Instance& instance, u32 width, u32 height);
+        bool isOpen();
+        void swapBuffers();
+        void pollEvents();
+        GLFWwindow* get();
+        VkSurfaceKHR getSurface();
+        VkExtent2D size() const;
+    };
+
+    class Device {
+    private:
+        VkPhysicalDevice m_PhysicalDevice;
+        VkDevice m_Device;
+        u32 m_GraphicsIndex, m_PresentIndex;
+        VkQueue m_GraphicsQueue, m_PresentQueue;
+    public:
+        Device(ws::Instance& instance, Window& window);
+        VkDevice get();
+        VkPhysicalDevice getPhysicalDevice();
+        u32 getGraphicsIndex();
+        VkQueue getGraphicsQueue();
+        VkResult submitQueue(VkSubmitInfo& submitInfo, VkFence fence);
+        VkResult presentQueue(VkPresentInfoKHR& presentInfo);
+        VkResult waitForFences(VkFence* fences, u32 count);
+        VkResult resetFences(VkFence* fences, u32 count);
+        vector<VkSemaphore> createSemaphores(u32 count);
+        vector<VkFence> createFences(u32 count);
+        void waitIdle();
+    };
+
+    // Soon to be parent object of vertex and index buffers
+    class Buffer {
+    protected:
+        VkBuffer m_Buffer;
+        VkDeviceMemory m_Memory;
+    public:
+        Buffer();
+        Buffer(ws::Device device, VkCommandPool pool, VkDeviceSize size, VkBufferUsageFlags bufferType, void* bufferdata);
+        void destroy(ws::Device device);
+        VkBuffer get();
+    };
+
+    class VertexBuffer : public Buffer {
+    public:
+        VertexBuffer(ws::Device device, VkCommandPool pool, VkDeviceSize size, void* vertexdata);
+    };
+
+    class IndexBuffer : public Buffer {
+    public:
+        IndexBuffer(ws::Device device, VkCommandPool pool, VkDeviceSize size, void* indexdata);
+    };
+
+    class UniformBuffer {
+    private:
+        vector<VkBuffer> m_Buffer;
+        vector<VkDeviceMemory> m_Memory;
+        VkDeviceSize m_Size;
+        void create(ws::Device device, VkCommandPool pool, VkDeviceSize size, u32 count = 1);
+    public:
+        UniformBuffer(ws::Device device, VkCommandPool pool, VkDeviceSize size, u32 count = 1);
+        void update(ws::Device device, void* data, u32 index);
+        VkBuffer* get();
+        VkDeviceSize getSize();
+        vector<VkDeviceMemory> getMem();
+        void destroy(ws::Device device);
+        void recreate(ws::Device device, VkCommandPool pool, VkDeviceSize size, u32 count = 1);
+    };
+
+
+
+    class CommandBuffer {
+    private:
+        VkCommandPool* m_OwnerPool;
+        vector<VkCommandBuffer> m_Buffers;
+        u32 m_Index;
+    public:
+        CommandBuffer(ws::Device& device, VkCommandPool* owner, u32 count);
+        void nextIndex();
+        void prevIndex();
+        void setIndex(u32 index);
+
+        void record(VkRenderPass renderPass, VkFramebuffer framebuffer, VkExtent2D extent);
+        void stopRecording();
+        void bindPipeline(VkPipeline pipeline, VkPipelineBindPoint bindPoint);
+        void draw(u32 vertexCount, u32 instances, u32 firstVertex, u32 firstInstance);
+        void drawIndexed(u32 indexCount, u32 instances, u32 firstIndex, u32 firstVertex, u32 firstInstance);
+        void bindVertexBuffer(VkBuffer buffer);
+        void bindIndexBuffer(VkBuffer buffer, VkIndexType type = VK_INDEX_TYPE_UINT16);
+        void bindDesciptorSets(VkPipelineLayout layout, VkDescriptorSet set);
+        VkCommandBuffer get(u32 index);
+
+        void freeBuffers(ws::Device device);
+    };
+
+    class CommandPool {
+    private:
+        VkCommandPool m_Pool;
+        CommandBuffer* m_Buffers;
+    public:
+        CommandPool(ws::Device device);
+        CommandBuffer AllocateBuffers(ws::Device& device, u32 count);
+        VkCommandPool get();
+        void destroy(ws::Device device);
+    };
+
+    class Swapchain {
+    private:
+        VkSwapchainKHR m_Swapchain;
+        SurfaceDisplayFormats m_Formats;
+        ws::ImageArray m_Images;
+        vector<VkFramebuffer> m_Framebuffers;
+        void create(ws::Device device, ws::Window window);
+    public:
+        Swapchain(ws::Device device, ws::Window window);
+        VkSwapchainKHR get();
+        VkExtent2D getExtent();
+        u32 getImageCount();
+        SurfaceDisplayFormats getFormats();
+        VkFramebuffer* getFramebuffers();
+        void initializeFramebuffers(ws::Device& device, VkRenderPass& renderPass);
+        u32 getImageIndex(ws::Device device, VkSemaphore& semaphore, Result* result = nullptr);
+
+        void recreate(ws::Device device, ws::Window window);
+        void destroy(ws::Device device);
+    };
+
+
+    class RenderPass {
+    private:
+        VkRenderPass m_RenderPass;
+        void create(ws::Device device, ws::Swapchain swapchain);
+    public:
+        RenderPass(ws::Device device, ws::Swapchain swapchain);
+        VkRenderPass get() const;
+        void recreate(ws::Device device, ws::Swapchain swapchain);
+        void destroy(ws::Device device);
+    };
+
+    class Descriptor {
+    private:
+        VkDescriptorSetLayout m_Layout;
+        vector<VkDescriptorPoolSize> m_Sizes;
+        VkDescriptorPool m_Pool;
+        vector<VkDescriptorSet> m_Sets;
+    public:
+        void createLayout(ws::Device device, vector<VkDescriptorSetLayoutBinding> bindings);
+
+        void createPool(ws::Device device, const u32 descriptorCount[]);
+        // Allocates A Set Amount Of Descriptor Sets
+        void allocate(ws::Device device, u32 count);
+        // Creates A Single Descriptor Set
+        //void create();
+        // Destroys A Single Descriptor Set
+        //void destroy();
+        // Frees The Entire Pool
+        //void free();
+    };
+
+// I made this simply because I dont want to keep writing it
+#define GraphicsPipelineConstructor \
+                        ws::Device device, ws::Swapchain swapchain, ws::RenderPass renderPass, \
+                        Shader vShader, Shader fShader, VertexInputData inputData, \
+                        ws::UniformBuffer& uniformBuffers
+
+    class GraphicsPipeline {
+    private:
+        void create(GraphicsPipelineConstructor);
+        VkPipeline m_Pipeline;
+        VkPipelineLayout m_Layout;
+
+        VkDescriptorSetLayout m_DescriptorLayout;
+        VkDescriptorPool m_Pool;
+        vector<VkDescriptorSet> m_DescriptorSets;
+        void createDescriptor(ws::Device device, ws::UniformBuffer& buffers, u32 count);
+
+        VkSampler m_Sampler;
+        void createSampler(ws::Device device);
+
+        VkDescriptorSetLayout m_TextureLayout;
+        VkDescriptorPool m_TexturePool;
+        vector<VkDescriptorSet> m_TextureSet;
+        std::vector<ws::Texture> m_Textures;
+    public:
+        //GraphicsPipeline() {};
+        // Creates Graphics Pipeline And Related Objects
+        GraphicsPipeline(GraphicsPipelineConstructor);
+        // Returns Pipeline Object
+        VkPipeline get();
+        // Returns Pipeline Layout Object
+        VkPipelineLayout getLayout();
+        // Returns List Of Descriptor Sets
+        vector<VkDescriptorSet> getDescriptorSet();
+        void expectTextures(u32 count);
+        void loadTexture(ws::Texture texture, const char* name);
+        void unloadTexture(const char* name);
+
+        //void newDescriptor(); // TODO: add a feature to manually add a new descriptor
+
+        void destroy(ws::Device device);
+        void recreate(GraphicsPipelineConstructor);
+    };
+
+    // Helper Functions
+
+
+    /// TODO: Convert NDC To Screen Coords
+#define scastF static_cast<float>
+    inline glm::vec2 toScreenCoords(VkExtent2D extent, float x, float y);
+
+    /// TODO: Image/Textures
+    ws::Texture createTexture(ws::Device device, ws::CommandPool pool, const char* path);
+}
+
+inline void UNO_FLIP_FUCKING_SUCKS() {
+    printf("Uno flip is literally the worst uno. you can not prove me otherwise\n"
+           "In Uno Flip I dont feel like I loose my human rights everytime I play on the normal side and that is terrible\n"
+           "I really do miss picking up more cards");
+}
 
 
 #endif //GRAPHICS_ENGINE2_HPP

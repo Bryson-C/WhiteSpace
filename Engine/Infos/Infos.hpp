@@ -17,6 +17,7 @@
 #define WindowObject GLFWwindow*
 using std::vector;
 #define u32 uint32_t
+#define u16 uint16_t
 #define Result VkResult
 #define SUCCESS VK_SUCCESS
 #define ERROR VK_ERROR_UNKNOWN
@@ -48,7 +49,8 @@ using std::vector;
 #define RAM_MEMORY VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
 #define GPU_MEMORY VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
 
-
+#define SAMPLER_REPEAT VK_SAMPLER_ADDRESS_MODE_REPEAT
+#define FILTER_LINEAR VK_FILTER_LINEAR
 
 struct SurfaceDisplayFormats {
     VkSurfaceFormatKHR Format;
@@ -195,6 +197,13 @@ namespace Info {
 
     VkBufferCreateInfo BufferCreateInfo(VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode share = VK_SHARING_MODE_EXCLUSIVE);
     VkDescriptorSetAllocateInfo DescriptorAllocInfo(vector<VkDescriptorSetLayout>& layouts, VkDescriptorPool pool, u32 count);
+
+    VkSamplerCreateInfo SamplerCreateInfo(float maxAnisotropy = 0.0f);
+    VkDescriptorSetLayoutBinding DescriptorLayoutBinding(u32 binding, u32 count, VkDescriptorType type, VkShaderStageFlags stages);
+    VkVertexInputAttributeDescription VertexInputAttributeDescription(u32 binding, u32 loc,  u32 offset, VkFormat format);
+    VkVertexInputBindingDescription VertexInputBindingDescription(u32 binding, u32 stride, VkVertexInputRate inputRate);
+    VkDescriptorSetLayoutCreateInfo DescriptorLayoutCreateInfo(vector<VkDescriptorSetLayoutBinding> bindings);
+    VkWriteDescriptorSet DescriptorWrite(VkDescriptorType type, u32 count, u32 binding, VkDescriptorSet& descriptor, VkDescriptorBufferInfo* bufferInfo = nullptr, VkDescriptorImageInfo* imageInfo = nullptr);
 }
 
 #endif //ENGINE_INFOS_HPP

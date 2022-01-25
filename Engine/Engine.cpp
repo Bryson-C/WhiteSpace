@@ -1,5 +1,8 @@
 #include "Engine.hpp"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "../lib/stb-master/stb_image.h"
+
 namespace Info {
     namespace Debug {
         static uint32_t errorCount = 0;
@@ -168,32 +171,38 @@ void CopyBuffer(VkDevice device, VkCommandPool pool, VkQueue queue, VkBuffer dst
 }
 
 ws::Instance::Instance(const char* name, bool debug) : m_InstanceName(name), m_Debug(debug) {
+    auto StartTime = clock();
     Initalize();
     if (debug) addSetting(settings::Debug);
     m_Instance = CreateInstance();
+    printf("Instance: %lims\n", clock()-StartTime);
 }
 VkInstance ws::Instance::get() { return m_Instance; }
 const char* ws::Instance::getName() { return m_InstanceName; }
 
 
-static void                 resizeCallback(GLFWwindow*, int, int) {}
+static void                 resizeCallback(GLFWwindow*, int, int) {
+
+}
                             ws::Window::Window(ws::Instance& instance, uint32_t width, uint32_t height) {
+    auto StartTime = clock();
     m_Window = glfwCreateWindow(width, height, instance.getName(), nullptr, nullptr);
     glfwCreateWindowSurface(instance.get(), m_Window, nullptr, &m_Surface);
     glfwSetFramebufferSizeCallback(m_Window, resizeCallback);
+    printf("Window: %lims\n", clock()-StartTime);
 }
 bool                        ws::Window::isOpen() { return !glfwWindowShouldClose(m_Window); }
 void                        ws::Window::swapBuffers() { glfwSwapBuffers(m_Window); }
 void                        ws::Window::pollEvents() { glfwPollEvents(); }
 GLFWwindow*                 ws::Window::get() { return m_Window; }
 VkSurfaceKHR                ws::Window::getSurface() { return m_Surface; }
-v2<uint32_t>                ws::Window::size() const {
-    int w,h;
-    glfwGetFramebufferSize(m_Window, &w, &h);
-    return {static_cast<u32>(w),static_cast<u32>(h)};
+VkExtent2D                  ws::Window::size() const {
+    VkExtent2D extent;
+    glfwGetFramebufferSize(m_Window, reinterpret_cast<int *>(&extent.width), reinterpret_cast<int *>(&extent.height));
+    return extent;
 }
 
-VkPhysicalDevice            FindPhysicalDevice(VkInstance instance) {
+VkPhysicalDevice                FindPhysicalDevice(VkInstance instance) {
     u32 count = 0;
     vkEnumeratePhysicalDevices(instance, &count, nullptr);
     vector<VkPhysicalDevice> devices(count);
@@ -209,13 +218,14 @@ vector<VkQueueFamilyProperties> FindQueueFamilyProperties(VkPhysicalDevice physi
     vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &count, queueFamilies.data());
     return queueFamilies;
 }
-bool                        deviceSupportsSurface(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, u32 index) {
+bool                            deviceSupportsSurface(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, u32 index) {
     VkBool32 support;
     vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, index, surface, &support);
     return support;
 }
 
                             ws::Device::Device(ws::Instance& instance, Window& window) {
+    auto StartTime = clock();
     m_PhysicalDevice = FindPhysicalDevice(instance.get());
     auto queueFamilyProps = FindQueueFamilyProperties(m_PhysicalDevice);
 
@@ -231,11 +241,14 @@ bool                        deviceSupportsSurface(VkPhysicalDevice physicalDevic
     if (m_PresentIndex != m_GraphicsIndex) qInfos.emplace_back(Info::QueueCreateInfo(m_PresentIndex, 1, &priority));
     vector<const char*> extensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
 
-    auto deviceInfo = Info::DeviceCreateInfo(qInfos, {}, extensions);
+    VkPhysicalDeviceFeatures features{};
+    features.samplerAnisotropy = VK_TRUE;
+    auto deviceInfo = Info::DeviceCreateInfo(qInfos, {}, extensions, &features);
     vkCreateDevice(m_PhysicalDevice, &deviceInfo, nullptr, &m_Device);
 
     vkGetDeviceQueue(m_Device, m_GraphicsIndex, 0, &m_GraphicsQueue);
     vkGetDeviceQueue(m_Device, m_PresentIndex, 0, &m_PresentQueue);
+    printf("Device: %lims\n", clock()-StartTime);
 }
 VkDevice                    ws::Device::get() { return m_Device; }
 VkPhysicalDevice            ws::Device::getPhysicalDevice() { return m_PhysicalDevice; }
@@ -253,7 +266,7 @@ VkResult                    ws::Device::waitForFences(VkFence* fences, u32 count
 VkResult                    ws::Device::resetFences(VkFence* fences, u32 count) {
     return vkResetFences(m_Device, count, fences);
 }
-vector<VkSemaphore>           ws::Device::createSemaphores(uint32_t count) {
+vector<VkSemaphore>         ws::Device::createSemaphores(uint32_t count) {
     vector<VkSemaphore> semaphores(count, nullptr);
     for (auto& i : semaphores) {
         auto info = Info::SemaphoreCreateInfo();
@@ -261,7 +274,7 @@ vector<VkSemaphore>           ws::Device::createSemaphores(uint32_t count) {
     }
     return semaphores;
 }
-vector<VkFence>               ws::Device::createFences(uint32_t count) {
+vector<VkFence>             ws::Device::createFences(uint32_t count) {
     vector<VkFence> fences(count);
     for (auto& i : fences) {
         auto info = Info::FenceCreateInfo();
@@ -306,7 +319,7 @@ u32                         getMinimumImageCount(VkPhysicalDevice physicalDevice
     }
     return imageCount;
 }
-ws::ImageArray               CreateSwapchainImagesAndViews(VkDevice device, VkSwapchainKHR swapchain, VkFormat format) {
+ws::ImageArray              CreateSwapchainImagesAndViews(VkDevice device, VkSwapchainKHR swapchain, VkFormat format) {
     ws::ImageArray Images;
     u32 imageCount = 0;
     vkGetSwapchainImagesKHR(device, swapchain, &imageCount, nullptr);
@@ -389,8 +402,9 @@ VkExtent2D                  chooseSwapExtent(const VkSurfaceCapabilitiesKHR& cap
         return actualExtent;
     }
 }
-void                        ws::Swapchain::create(ws::Device& device, ws::Window& window) {
-    m_Formats.Extent = {window.size().x, window.size().y};
+void                        ws::Swapchain::create(ws::Device device, ws::Window window) {
+    auto StartTime = clock();
+    m_Formats.Extent = {window.size().width, window.size().height};
     m_Formats.Format = getSurfaceFormat(device.getPhysicalDevice(), window.getSurface());
     m_Formats.PresentMode = getPresentMode(device.getPhysicalDevice(), window.getSurface());
     auto capa = Info::GetSurfaceCapabilities(device.getPhysicalDevice(), window.getSurface());
@@ -401,8 +415,9 @@ void                        ws::Swapchain::create(ws::Device& device, ws::Window
 
     vkCreateSwapchainKHR(device.get(), &createInfo, nullptr, &m_Swapchain);
     m_Images = CreateSwapchainImagesAndViews(device.get(), m_Swapchain, m_Formats.Format.format);
+    printf("Swapchain: %lims\n", clock()-StartTime);
 }
-                            ws::Swapchain::Swapchain(ws::Device& device, ws::Window& window) {
+                            ws::Swapchain::Swapchain(ws::Device device, ws::Window window) {
     create(device, window);
 }
 
@@ -419,29 +434,28 @@ void                        ws::Swapchain::initializeFramebuffers(ws::Device& de
         vkCreateFramebuffer(device.get(), &info, nullptr, &m_Framebuffers[i]);
     }
 }
-void                        ws::Swapchain::destroyFramebuffers(ws::Device device) {
-    for (auto& i : m_Framebuffers) {
-        vkDestroyFramebuffer(device.get(), i, nullptr);
-    }
-}
-void                        ws::Swapchain::destroyImageViews(ws::Device device) {
-    for (auto& i : m_Images.View) {
-        vkDestroyImageView(device.get(), i, nullptr);
-    }
-}
-void                        ws::Swapchain::destroySwapchain(ws::Device device) {
-    vkDestroySwapchainKHR(device.get(), m_Swapchain, nullptr);
-}
 u32                         ws::Swapchain::getImageIndex(ws::Device device, VkSemaphore& semaphore, Result* result) {
     u32 index = 0;
     *result = vkAcquireNextImageKHR(device.get(), m_Swapchain, UINT64_MAX, semaphore, nullptr, &index);
     return index;
 }
+void                        ws::Swapchain::destroy(ws::Device device) {
+    for (auto& i : m_Framebuffers)
+        vkDestroyFramebuffer(device.get(), i, nullptr);
+    for (auto& i : m_Images.View)
+        vkDestroyImageView(device.get(), i, nullptr);
+    vkDestroySwapchainKHR(device.get(), m_Swapchain, nullptr);
+}
+void                        ws::Swapchain::recreate(ws::Device device, ws::Window window) {
+    create(device, window);
+}
 
                             ws::CommandBuffer::CommandBuffer(ws::Device &device, VkCommandPool* owner, uint32_t count) : m_OwnerPool(owner), m_Index(0) {
+    auto StartTime = clock();
     m_Buffers.resize(count);
     auto info = Info::CommandBufferAllocationInfo(*m_OwnerPool, count, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
     auto res = vkAllocateCommandBuffers(device.get(), &info, m_Buffers.data());
+    printf("Command Buffers: %lims\n", clock()-StartTime);
 }
 void                        ws::CommandBuffer::nextIndex() { if (m_Index < m_Buffers.size()-1) m_Index++; }
 void                        ws::CommandBuffer::prevIndex() { if (m_Index != 0) m_Index--; }
@@ -480,15 +494,13 @@ VkCommandBuffer             ws::CommandBuffer::get(uint32_t index) {
 void                        ws::CommandBuffer::freeBuffers(ws::Device device) {
     vkFreeCommandBuffers(device.get(), *m_OwnerPool, m_Buffers.size(), m_Buffers.data());
 }
-void                        ws::CommandPool::destroy(ws::Device device) {
-    vkDestroyCommandPool(device.get(), m_Pool, nullptr);
-}
-
 
 
                             ws::CommandPool::CommandPool(ws::Device device) {
+    auto StartTime = clock();
     auto createInfo = Info::CommandPoolCreateInfo(device.getGraphicsIndex());
     vkCreateCommandPool(device.get(), &createInfo, nullptr, &m_Pool);
+    printf("Command Pool: %lims\n", clock()-StartTime);
 }
                             ws::CommandBuffer ws::CommandPool::AllocateBuffers(ws::Device& device, u32 count) {
     auto buffers = CommandBuffer(device, &m_Pool, count);
@@ -499,7 +511,9 @@ VkCommandPool               ws::CommandPool::get() {
     return m_Pool;
 }
 
-                            ws::RenderPass::RenderPass(ws::Device& device, ws::Swapchain& swapchain) {
+
+void                        ws::RenderPass::create(ws::Device device, ws::Swapchain swapchain) {
+    auto StartTime = clock();
     std::vector<VkAttachmentDescription> colorAttchment = {Info::RenderPassAttachmentCreateInfo(swapchain.getFormats().Format.format, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)};
     auto colorAttachmentRef = Info::RenderPassAttachmentReferenceCreateInfo(0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     std::vector<VkSubpassDescription> subpass = {Info::SubpassDescriptionCreateInfo(VK_PIPELINE_BIND_POINT_GRAPHICS, colorAttachmentRef)};
@@ -507,13 +521,22 @@ VkCommandPool               ws::CommandPool::get() {
     auto info = Info::RenderPassCreateInfo(colorAttchment, subpass, dependancy);
 
     VkResult renderpassResult = vkCreateRenderPass(device.get(), &info, nullptr, &m_RenderPass);
+    printf("Render Pass: %lims\n", clock()-StartTime);
+}
+                            ws::RenderPass::RenderPass(ws::Device device, ws::Swapchain swapchain) {
+    create(device, swapchain);
 }
 VkRenderPass                ws::RenderPass::get() const { return m_RenderPass; }
+void                        ws::RenderPass::destroy(ws::Device device) {
+    vkDestroyRenderPass(device.get(), m_RenderPass, nullptr);
+}
+void                        ws::RenderPass::recreate(ws::Device device, ws::Swapchain swapchain) {
+    create(device, swapchain);
+}
 
 
-
-ws::UniformBuffer::UniformBuffer(ws::Device device, VkCommandPool pool, VkDeviceSize size, u32 count) {
-
+void                        ws::UniformBuffer::create(ws::Device device, VkCommandPool pool, VkDeviceSize size, uint32_t count) {
+    auto StartTime = clock();
     m_Buffer.resize(count);
     m_Memory.resize(count);
     m_Size = size;
@@ -522,9 +545,12 @@ ws::UniformBuffer::UniformBuffer(ws::Device device, VkCommandPool pool, VkDevice
         m_Buffer[i] = buffer.Buffer;
         m_Memory[i] = buffer.Memory;
     }
-
+    printf("Uniform Buffers: %lims\n", clock()-StartTime);
 }
-vector<VkDeviceMemory>        ws::UniformBuffer::getMem() {
+                            ws::UniformBuffer::UniformBuffer(ws::Device device, VkCommandPool pool, VkDeviceSize size, u32 count) {
+    create(device, pool, size, count);
+}
+vector<VkDeviceMemory>      ws::UniformBuffer::getMem() {
     return m_Memory;
 }
 void                        ws::UniformBuffer::update(ws::Device device, void* data, u32 index) {
@@ -548,68 +574,19 @@ void                        ws::UniformBuffer::destroy(ws::Device device) {
     }
 }
 VkDeviceSize                ws::UniformBuffer::getSize() { return m_Size; }
-
-
-                            ws::GraphicsPipeline::GraphicsPipeline(ws::Device device, ws::Swapchain swapchain, ws::RenderPass renderPass, Shader vShader, Shader fShader) {
-    auto vertexInfo = Info::Pipeline::ShaderStageCreateInfo(vShader);
-    auto fragmentInfo = Info::Pipeline::ShaderStageCreateInfo(fShader);
-    VkPipelineShaderStageCreateInfo shaderStages[2] = {vertexInfo,fragmentInfo};
-
-    vector<VkVertexInputAttributeDescription> attribs{};
-    vector<VkVertexInputBindingDescription > bindings{};
-    auto vertexInput = Info::Pipeline::VertexInputCreateInfo(bindings,attribs);
-    auto inputAssembly = Info::Pipeline::InputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-    auto viewportInfo = Info::Viewport(0.0f,0.0f,swapchain.getExtent(), 0.0f, 1.0f);
-    VkRect2D scissorInfo = {{0,0}, swapchain.getExtent()};
-    auto viewport = Info::Pipeline::Viewport(viewportInfo, scissorInfo);
-    auto rasterization = Info::Pipeline::RasterizationCreateInfo(VK_FALSE, VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_CLOCKWISE);
-    auto multisample = Info::Pipeline::MultisampleCreateInfo(VK_SAMPLE_COUNT_1_BIT);
-    std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachment = {Info::Pipeline::ColorBlendAttachmentCreateInfo(VK_FALSE, BLEND_ONE, BLEND_ONE, BLEND_ZERO, BLEND_ZERO)};
-    auto colorBlend = Info::Pipeline::ColorBlendCreateInfo(colorBlendAttachment);
-
-
-
-    VkDynamicState dynamicStates[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_LINE_WIDTH };
-    VkPipelineDynamicStateCreateInfo dynamicState{};
-    dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-    dynamicState.dynamicStateCount = 2;
-    dynamicState.pDynamicStates = dynamicStates;
-
-    auto pipelineLayout = Info::Pipeline::LayoutCreateInfo({}, {});
-    auto res = vkCreatePipelineLayout(device.get(), &pipelineLayout, nullptr, &m_Layout);
-
-    VkGraphicsPipelineCreateInfo pipelineInfo {
-            .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-            .pNext = nullptr,
-            .flags = 0,
-            .stageCount = 2,
-            .pStages = shaderStages,
-            .pVertexInputState = &vertexInput,
-            .pInputAssemblyState = &inputAssembly,
-            .pTessellationState = nullptr,
-            .pViewportState = &viewport,
-            .pRasterizationState = &rasterization,
-            .pMultisampleState = &multisample,
-            .pDepthStencilState = nullptr,
-            .pColorBlendState = &colorBlend,
-            .pDynamicState = nullptr,
-            .layout = m_Layout,
-            .renderPass = renderPass.get(),
-            .subpass = 0,
-            .basePipelineHandle = VK_NULL_HANDLE,
-            .basePipelineIndex = -1
-    };
-    auto pipelineRes = vkCreateGraphicsPipelines(device.get(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_Pipeline);
+void                        ws::UniformBuffer::recreate(ws::Device device, VkCommandPool pool, VkDeviceSize size, uint32_t count) {
+    create(device, pool, size, count);
 }
-                            ws::GraphicsPipeline::GraphicsPipeline(ws::Device device, ws::Swapchain swapchain, ws::RenderPass renderPass, Shader vShader, Shader fShader,
-                                                                    vector<VkVertexInputAttributeDescription>& attributes,
-                                                                    vector<VkVertexInputBindingDescription>& bindings,
-                                                                    ws::UniformBuffer& uniformBuffers) {
+
+
+
+void                        ws::GraphicsPipeline::create(GraphicsPipelineConstructor) {
+    auto StartTime = clock();
     auto vertexInfo = Info::Pipeline::ShaderStageCreateInfo(vShader);
     auto fragmentInfo = Info::Pipeline::ShaderStageCreateInfo(fShader);
     VkPipelineShaderStageCreateInfo shaderStages[2] = {vertexInfo,fragmentInfo};
 
-    auto vertexInput = Info::Pipeline::VertexInputCreateInfo(bindings, attributes);
+    auto vertexInput = Info::Pipeline::VertexInputCreateInfo(inputData.bindings, inputData.attributes);
 
     auto inputAssembly = Info::Pipeline::InputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
     auto viewportInfo = Info::Viewport(0.0f,0.0f,swapchain.getExtent(), 0.0f, 1.0f);
@@ -620,6 +597,7 @@ VkDeviceSize                ws::UniformBuffer::getSize() { return m_Size; }
     std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachment = {Info::Pipeline::ColorBlendAttachmentCreateInfo(VK_FALSE, BLEND_ONE, BLEND_ONE, BLEND_ZERO, BLEND_ZERO)};
     auto colorBlend = Info::Pipeline::ColorBlendCreateInfo(colorBlendAttachment);
 
+    createSampler(device);
     createDescriptor(device, uniformBuffers, swapchain.getImageCount());
 
     VkDynamicState dynamicStates[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_LINE_WIDTH };
@@ -627,6 +605,7 @@ VkDeviceSize                ws::UniformBuffer::getSize() { return m_Size; }
     dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
     dynamicState.dynamicStateCount = 2;
     dynamicState.pDynamicStates = dynamicStates;
+
 
 
     auto pipelineLayout = Info::Pipeline::LayoutCreateInfo({m_DescriptorLayout}, {});
@@ -654,28 +633,32 @@ VkDeviceSize                ws::UniformBuffer::getSize() { return m_Size; }
             .basePipelineIndex = -1
     };
     auto pipelineRes = vkCreateGraphicsPipelines(device.get(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_Pipeline);
+    printf("Pipeline: %lims\n", clock()-StartTime);
+}
+                            ws::GraphicsPipeline::GraphicsPipeline(GraphicsPipelineConstructor) {
+    create(device, swapchain, renderPass, vShader, fShader, inputData, uniformBuffers);
 }
 VkPipeline                  ws::GraphicsPipeline::get() { return m_Pipeline; }
 VkPipelineLayout            ws::GraphicsPipeline::getLayout() {return m_Layout;}
 void                        ws::GraphicsPipeline::createDescriptor(ws::Device device, ws::UniformBuffer& buffers, u32 count) {
 
-    VkDescriptorSetLayoutBinding uboLayoutBinding{};
-    uboLayoutBinding.binding = 0;
-    uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    uboLayoutBinding.descriptorCount = 1;
-    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-    uboLayoutBinding.pImmutableSamplers = nullptr; // Optional
+
+
+    VkDescriptorSetLayoutBinding uboLayoutBinding = Info::DescriptorLayoutBinding(0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VERTEX_SHADER);
+    VkDescriptorSetLayoutBinding samplerLayoutBinding = Info::DescriptorLayoutBinding(1, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, FRAGMENT_SHADER);
+    std::array<VkDescriptorSetLayoutBinding, 2> descriptorBindings = {uboLayoutBinding, samplerLayoutBinding};
 
     VkDescriptorSetLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layoutInfo.bindingCount = 1;
-    layoutInfo.pBindings = &uboLayoutBinding;
+    layoutInfo.bindingCount = descriptorBindings.size();
+    layoutInfo.pBindings = descriptorBindings.data();
 
     vkCreateDescriptorSetLayout(device.get(), &layoutInfo, nullptr, &m_DescriptorLayout);
 
 
     vector<VkDescriptorPoolSize> poolSize;
     poolSize.emplace_back(Info::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, count));
+    poolSize.emplace_back(Info::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, count));
     VkDescriptorPoolCreateInfo poolInfo = Info::DescriptorPoolCreateInfo(count, poolSize);
 
     vkCreateDescriptorPool(device.get(), &poolInfo, nullptr, &m_Pool);
@@ -697,34 +680,122 @@ void                        ws::GraphicsPipeline::createDescriptor(ws::Device de
         bufferInfo.offset = 0;
         bufferInfo.range = buffers.getSize();
 
-        VkWriteDescriptorSet write{};
-        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        write.dstSet = m_DescriptorSets[i];
-        write.descriptorCount = 1;
-        write.dstBinding = 0;
-        write.dstArrayElement = 0;
-        write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        write.pBufferInfo = &bufferInfo;
+        /*VkDescriptorImageInfo imageInfo{};
+        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        imageInfo.imageView = m_Textures[0].View;
+        imageInfo.sampler = m_Sampler;*/
+
+        VkWriteDescriptorSet write[1]{};
+        write[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write[0].dstSet = m_DescriptorSets[i];
+        write[0].descriptorCount = 1;
+        write[0].dstBinding = 0;
+        write[0].dstArrayElement = 0;
+        write[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        write[0].pBufferInfo = &bufferInfo;
+
+        /*write[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write[1].dstSet = m_DescriptorSets[i];
+        write[1].dstBinding = 1;
+        write[1].dstArrayElement = 0;
+        write[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        write[1].descriptorCount = 1;
+        write[1].pImageInfo = &imageInfo;*/
 
 
         // TODO: Update Descriptor Set Throws Error
-        vkUpdateDescriptorSets(device.get(), 1, &write, 0, nullptr);
+        vkUpdateDescriptorSets(device.get(), 1, write, 0, nullptr);
     }
 }
 vector<VkDescriptorSet>     ws::GraphicsPipeline::getDescriptorSet() {
     return m_DescriptorSets;
 }
+void                        ws::GraphicsPipeline::createSampler(ws::Device device) {
+
+    VkPhysicalDeviceProperties properties{};
+    vkGetPhysicalDeviceProperties(device.getPhysicalDevice(), &properties);
+    VkSamplerCreateInfo samplerInfo = Info::SamplerCreateInfo(properties.limits.maxSamplerAnisotropy);
+    auto res = vkCreateSampler(device.get(), &samplerInfo, nullptr, &m_Sampler);
+
+}
+/*
+void                        ws::GraphicsPipeline::expectTextures(uint32_t count) {
+
+}
+void                        ws::GraphicsPipeline::loadTexture(ws::Texture texture, const char *name) {
+    if (name == nullptr) return;
+    texture.handle = name;
+    m_Textures.emplace_back(texture);
+
+
+}
+void                        ws::GraphicsPipeline::unloadTexture(const char *name) {
+    for (int i = 0; i < m_Textures.size(); i++) {
+        if (m_Textures[i].handle == name) {
+            m_Textures.erase(m_Textures.begin()+i);
+            break;
+        }
+    }
+}
+*/
+void                        ws::GraphicsPipeline::destroy(ws::Device device) {
+    vkDestroyPipeline(device.get(), m_Pipeline, nullptr);
+    vkDestroyPipelineLayout(device.get(), m_Layout, nullptr);
+    vkDestroyDescriptorPool(device.get(), m_Pool, nullptr);
+}
+void                        ws::GraphicsPipeline::recreate(GraphicsPipelineConstructor) {
+    create(device, swapchain, renderPass, vShader, fShader, inputData, uniformBuffers);
+}
+
+
+void                        ws::Descriptor::createLayout(ws::Device device, vector<VkDescriptorSetLayoutBinding> bindings) {
+
+    auto layoutInfo = Info::DescriptorLayoutCreateInfo(bindings);
+    for (const auto i : bindings) {
+        m_Sizes.emplace_back(Info::DescriptorPoolSize(i.descriptorType, 0));
+    }
+    vkCreateDescriptorSetLayout(device.get(), &layoutInfo, nullptr, &m_Layout);
+
+}
+void                        ws::Descriptor::createPool(ws::Device device, const u32 descriptorCount[]) {
+    u32 maxSets = 0;
+    for (u32 i = 0; i < m_Sizes.size(); i++) {
+        if (descriptorCount[i] > maxSets) maxSets = descriptorCount[i];
+        m_Sizes[i].descriptorCount = descriptorCount[i];
+    }
+    auto poolInfo = Info::DescriptorPoolCreateInfo(maxSets, m_Sizes);
+    vkCreateDescriptorPool(device.get(), &poolInfo, nullptr, &m_Pool);
+}
+void                        ws::Descriptor::allocate(ws::Device device, uint32_t count) {
+    vector<VkDescriptorSetLayout> layouts(count, m_Layout);
+    auto allocinfo = Info::DescriptorAllocInfo(layouts, m_Pool, count);
+    vkAllocateDescriptorSets(device.get(), &allocinfo, m_Sets.data());
+}
+//void                        ws::Descriptor::create(ws::Device device) {
+//    vector<VkWriteDescriptorSet> write;
+    //Info::DescriptorWrite();
+  //  vkUpdateDescriptorSets(device.get(), write.size(), write.data(), 0, nullptr);
+//}
+
+
+
+
+
+
+
+
+
+
+
+
 
                             ws::Buffer::Buffer() {}
                             ws::Buffer::Buffer(ws::Device device, VkCommandPool pool, VkDeviceSize size, VkBufferUsageFlags bufferType, void *bufferdata) {
-    auto stagingBuffer = CreateBuffer(device.get(), device.getPhysicalDevice(), size,
-                                      BUFFER_SENDER, RAM_MEMORY | COHERENT_MEMORY);
+    auto StartTime = clock();
+    auto stagingBuffer = CREATE_STAGING_BUFFER(device.get(), device.getPhysicalDevice(), size);
 
 
-    void* data;
-    vkMapMemory(device.get(), stagingBuffer.Memory, 0, size, 0, &data);
-    memcpy(data, bufferdata, (size_t) size);
-    vkUnmapMemory(device.get(), stagingBuffer.Memory);
+    UPLOAD_BUFFER_TO_MEMORY(device.get(), stagingBuffer.Memory, bufferdata, size);
 
 
 
@@ -738,6 +809,7 @@ vector<VkDescriptorSet>     ws::GraphicsPipeline::getDescriptorSet() {
 
     vkFreeMemory(device.get(), stagingBuffer.Memory, nullptr);
     vkDestroyBuffer(device.get(), stagingBuffer.Buffer, nullptr);
+    printf("Buffer: %lims\n", clock()-StartTime);
 }
 void                        ws::Buffer::destroy(ws::Device device) {
     vkDestroyBuffer(device.get(), m_Buffer, nullptr);
@@ -751,6 +823,178 @@ VkBuffer                    ws::Buffer::get() {
 
 
                             ws::IndexBuffer::IndexBuffer(ws::Device device, VkCommandPool pool, VkDeviceSize size, void *indexdata) : Buffer(device, pool, size, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, indexdata) {}
+
+
+VkCommandBuffer beginSingleTimeCommands(ws::Device device, VkCommandPool commandPool) {
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandPool = commandPool;
+    allocInfo.commandBufferCount = 1;
+
+    VkCommandBuffer commandBuffer;
+    vkAllocateCommandBuffers(device.get(), &allocInfo, &commandBuffer);
+
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+    vkBeginCommandBuffer(commandBuffer, &beginInfo);
+
+    return commandBuffer;
+}
+void endSingleTimeCommands(ws::Device device, VkQueue queue, VkCommandPool commandPool, VkCommandBuffer commandBuffer) {
+    vkEndCommandBuffer(commandBuffer);
+
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &commandBuffer;
+
+    vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
+    vkQueueWaitIdle(queue);
+
+    vkFreeCommandBuffers(device.get(), commandPool, 1, &commandBuffer);
+}
+
+
+void                        createImage(ws::Device device, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, ws::Texture& image) {
+    VkImageCreateInfo imageInfo{};
+    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    imageInfo.imageType = VK_IMAGE_TYPE_2D;
+    imageInfo.extent.width = width;
+    imageInfo.extent.height = height;
+    imageInfo.extent.depth = 1;
+    imageInfo.mipLevels = 1;
+    imageInfo.arrayLayers = 1;
+    imageInfo.format = format;
+    imageInfo.tiling = tiling;
+    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    imageInfo.usage = usage;
+    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    if (vkCreateImage(device.get(), &imageInfo, nullptr, &image.Image) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create image!");
+    }
+
+    VkMemoryRequirements memRequirements;
+    vkGetImageMemoryRequirements(device.get(), image.Image, &memRequirements);
+
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+    allocInfo.memoryTypeIndex = findMemoryType(device.getPhysicalDevice(), memRequirements.memoryTypeBits, properties);
+
+    if (vkAllocateMemory(device.get(), &allocInfo, nullptr, &image.Memory) != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate image memory!");
+    }
+
+    vkBindImageMemory(device.get(), image.Image, image.Memory, 0);
+}
+void                        copyBufferToImage(ws::Device device, VkCommandPool pool, VkBuffer buffer, VkImage image, uint32_t width, uint32_t height) {
+    VkCommandBuffer commandBuffer = beginSingleTimeCommands(device, pool);
+    VkBufferImageCopy region{};
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+
+    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.imageSubresource.mipLevel = 0;
+    region.imageSubresource.baseArrayLayer = 0;
+    region.imageSubresource.layerCount = 1;
+
+    region.imageOffset = {0, 0, 0};
+    region.imageExtent = {
+            width,
+            height,
+            1
+    };
+    vkCmdCopyBufferToImage(
+            commandBuffer,
+            buffer,
+            image,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            1,
+            &region
+    );
+    endSingleTimeCommands(device, device.getGraphicsQueue(), pool, commandBuffer);
+}
+void                        transitionImageLayout(ws::Device device, ws::Texture image, VkCommandPool pool, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout) {
+    VkCommandBuffer buffer = beginSingleTimeCommands(device, pool);
+    VkImageMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.oldLayout = oldLayout;
+    barrier.newLayout = newLayout;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = image.Image;
+    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+
+    VkPipelineStageFlags sourceStage;
+    VkPipelineStageFlags destinationStage;
+
+    if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+        sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    } else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+        sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    } else {
+        throw std::invalid_argument("unsupported layout transition!");
+    }
+
+    vkCmdPipelineBarrier(
+            buffer,
+            sourceStage, destinationStage,
+            0,
+            0, nullptr,
+            0, nullptr,
+            1, &barrier
+    );
+
+    endSingleTimeCommands(device, device.getGraphicsQueue(), pool, buffer);
+}
+ws::Texture                 ws::createTexture(ws::Device device, ws::CommandPool pool, const char* path) {
+    ws::Texture texture;
+    int width, height, channels;
+    stbi_uc* pixels = stbi_load(path, &width, &height, &channels, STBI_rgb_alpha);
+    VkDeviceSize imageSize = width * height * STBI_rgb_alpha;
+    if (!pixels) {
+        throw std::runtime_error("Failed To Load Image");
+    }
+    auto stagingBuffer = CREATE_STAGING_BUFFER(device.get(), device.getPhysicalDevice(), imageSize);
+    UPLOAD_BUFFER_TO_MEMORY(device.get(), stagingBuffer.Memory, pixels, imageSize);
+    stbi_image_free(pixels);
+
+    createImage(device, width, height, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL,
+    VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, texture);
+
+    transitionImageLayout(device, texture, pool.get(), VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    copyBufferToImage(device, pool.get(), stagingBuffer.Buffer, texture.Image, width, height);
+    transitionImageLayout(device, texture, pool.get(), VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+    vkDestroyBuffer(device.get(), stagingBuffer.Buffer, nullptr);
+    vkFreeMemory(device.get(), stagingBuffer.Memory, nullptr);
+
+    auto subResourceRange = Info::ImageSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1);
+    auto viewInfo = Info::ImageViewCreateInfo(texture.Image, VK_IMAGE_VIEW_TYPE_2D, VK_FORMAT_R8G8B8A8_SRGB, Info::ComponentMapping(), subResourceRange);
+    auto viewRes = vkCreateImageView(device.get(), &viewInfo, nullptr, &texture.View);
+
+
+    return texture;
+}
+
 
 
 
