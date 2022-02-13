@@ -4,9 +4,12 @@
 #include <iostream>
 #include "Sound/audio_out.h" // sound
 #include "Engine/Engine.hpp"
+#include "lib/glm-master/glm/gtx/string_cast.hpp"
+
 
 
 #undef CreateSemaphore
+
 
 class Timer {
 private:
@@ -53,7 +56,7 @@ struct UBO {
 void RecreateSwapchain(ws::Device device, ws::Window window, ws::Swapchain& swapchain, ws::GraphicsPipeline& pipeline,
                        ws::RenderPass& renderPass, ws::CommandPool& pool, ws::CommandBuffer& commandBuffer,
                        ws::UniformBuffer& uniformBuffer, Shader vShader, Shader fShader,
-                       ws::VertexInputData inputData) {
+                       VertexInputData inputData) {
 
     int width = 0, height = 0;
     glfwGetFramebufferSize(window.get(), &width, &height);
@@ -86,6 +89,12 @@ void RecreateSwapchain(ws::Device device, ws::Window window, ws::Swapchain& swap
 struct point {
     glm::vec3 pos;
 };
+void pushRect(vector<point>& vec, float x, float y, float w, float h) {
+    vec.push_back({{x, y, 0.0f}});
+    vec.push_back({{x+w, y, 0.0f}});
+    vec.push_back({{x+w, y+h, 0.0f}});
+    vec.push_back({{x, y+h, 0.0f}});
+}
 
 int main() {
 
@@ -96,20 +105,22 @@ int main() {
             {{-0.5f, -0.5f, 0.0f}},
             {{0.5f, -0.5f, 0.0f}},
             {{0.5f, 0.5f, 0.0f}},
-            {{-0.5f, 0.5f, 0.0f}},
-
-            {{0.0f, 0.0f, 0.0f}},
-            {{0.0f, 1.0f, 0.0f}},
-            {{1.0f, 1.0f, 0.0f}},
-            {{1.0f, 1.0f, 0.0f}}
+            {{-0.5f, 0.5f, 0.0f}}
     };
+
+    vector<point> vertices2{};
+    pushRect(vertices2, -1.0f, -1.0f, 1.0f, 1.0f);
+
+
+    u32 currentVertices = 0;
+
     vector<VkVertexInputBindingDescription> Bindings {
             Info::VertexInputBindingDescription(0, sizeof(point), VK_VERTEX_INPUT_RATE_VERTEX)
     };
     vector<VkVertexInputAttributeDescription> Attributes {
             Info::VertexInputAttributeDescription(0, 0, offsetof(point, pos), SHADER_TYPE_vec3)
     };
-    ws::VertexInputData VertexInput {
+    VertexInputData VertexInput {
             .attributes = Attributes,
             .bindings = Bindings,
     };
@@ -138,7 +149,7 @@ int main() {
     ws::UniformBuffer uniformBuffers(device, commandPool.get(), sizeof(UBO), swapchain.getImageCount());
     ws::GraphicsPipeline pipeline(device, swapchain, renderpass, vShader, fShader, VertexInput, uniformBuffers);
 
-
+    
     for (u32 i = 0; i < swapchain.getImageCount(); i++) {
         commandBuffers.setIndex(i);
         commandBuffers.record(RenderPassObject, framebuffers[i], swapchain.getExtent());
@@ -160,6 +171,7 @@ int main() {
     while (window.isOpen()) {
         window.pollEvents();
 
+
         device.waitForFences(&inFlightFences[frame], 1);
 
         Result imageResult;
@@ -180,11 +192,14 @@ int main() {
             }
         }
 
+
+
         UBO uniformData;
-        uniformData.model = glm::rotate(glm::mat4(1.0f), (float)clock()/10.0f, glm::vec3(0.0f,0.0f,2.0f));
-        uniformData.view = glm::mat4(1.0f);
-        uniformData.proj = glm::mat4(1.0f);
+        uniformData.model = glm::mat4(1.0f);
+        uniformData.view = glm::mat4(1.0f);//glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        uniformData.proj = glm::mat4(1.0f);//glm::perspective(glm::radians(90.0f), 800.0f / 600.0f, 0.1f, 10.0f);
         uniformData.proj[1][1] *= -1;
+
 
         UPDATE_UNIFORM_BUFFER(device.get(), uniformBuffers, uniformData, imageIndex);
 
