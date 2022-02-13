@@ -201,6 +201,14 @@ VkExtent2D                  ws::Window::size() const {
     glfwGetFramebufferSize(m_Window, reinterpret_cast<int *>(&extent.width), reinterpret_cast<int *>(&extent.height));
     return extent;
 }
+v2<u32>                     ws::Window::getMousePos() {
+    double x,y;
+    glfwGetCursorPos(m_Window, &x, &y);
+    return {(u32)x,(u32)y};
+}
+bool                        ws::Window::keyDown(int keycode) {
+    return glfwGetKey(m_Window, keycode);
+}
 
 VkPhysicalDevice                FindPhysicalDevice(VkInstance instance) {
     u32 count = 0;
@@ -498,7 +506,7 @@ void                        ws::CommandBuffer::freeBuffers(ws::Device device) {
 
                             ws::CommandPool::CommandPool(ws::Device device) {
     auto StartTime = clock();
-    auto createInfo = Info::CommandPoolCreateInfo(device.getGraphicsIndex());
+    auto createInfo = Info::CommandPoolCreateInfo(device.getGraphicsIndex(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
     vkCreateCommandPool(device.get(), &createInfo, nullptr, &m_Pool);
     printf("Command Pool: %lims\n", clock()-StartTime);
 }
@@ -580,59 +588,151 @@ void                        ws::UniformBuffer::recreate(ws::Device device, VkCom
 
 
 
+void ws::PipelineFactory::addShaderComponent(Shader shader) {
+    m_ShaderStages.emplace_back(shader);
+}
+void ws::PipelineFactory::addShaderComponent(std::initializer_list<Shader> shaders) {
+    for (auto i : shaders) {
+        m_ShaderStages.emplace_back(i);
+    }
+}
+void ws::PipelineFactory::addVertexInputComponent(VertexInputData vertexData) {
+    m_VertexInfo = Info::Pipeline::VertexInputCreateInfo(vertexData.bindings, vertexData.attributes);
+}
+void ws::PipelineFactory::addInputAssemblyComponent(VkPrimitiveTopology topology) {
+    m_InputAssembly = Info::Pipeline::InputAssemblyCreateInfo(topology);
+}
+void ws::PipelineFactory::addViewportComponent(VkExtent2D extent) {
+    m_Viewport = Info::Viewport(0.0f,0.0f, extent);
+    m_Scissor = {{0,0}, extent};
+}
+void ws::PipelineFactory::addViewportComponent(Window window) {
+    addViewportComponent(window.size());
+}
+void ws::PipelineFactory::addRasterizationComponent(VkPolygonMode drawMode, VkCullModeFlags cullmode, VkFrontFace frontface) {
+    m_Rasterization = Info::Pipeline::RasterizationCreateInfo(VK_FALSE, drawMode, cullmode, frontface);
+}
+void ws::PipelineFactory::addMultiSampleComponent(VkSampleCountFlagBits samples) {
+    m_Multisample = Info::Pipeline::MultisampleCreateInfo(samples);
+}
+void ws::PipelineFactory::addColorBlendComponent(vector<VkPipelineColorBlendAttachmentState> attachments) {
+    colorBlendAttachment.resize(attachments.size());
+    if (attachments.empty()) {
+        colorBlendAttachment.resize(1);
+        colorBlendAttachment[0] = Info::Pipeline::ColorBlendAttachmentCreateInfo(VK_FALSE, BLEND_ONE, BLEND_ONE, BLEND_ZERO, BLEND_ZERO);
+    } else {
+        colorBlendAttachment = attachments;
+    }
+}
+ws::DescriptorObject* ws::PipelineFactory::addDescriptorObjects(vector<DescriptorSet> bindings, ws::Device device) {
+    u32 maxSets = 0;
+    vector<VkDescriptorSetLayoutBinding> layoutBindings(bindings.size());
+    vector<VkDescriptorPoolSize> poolSizes(bindings.size());
+    for (int i = 0; i < bindings.size(); i++) {
+        layoutBindings[i] = Info::DescriptorLayoutBinding(i, 1, bindings[i].Type, bindings[i].Access);
+        poolSizes[i] = Info::DescriptorPoolSize(bindings[i].Type, bindings[i].Count);
+        if (bindings[i].Count > maxSets) maxSets = bindings[i].Count;
+    }
+    VkDescriptorSetLayoutCreateInfo layoutInfo = Info::DescriptorLayoutCreateInfo(layoutBindings);
+    vkCreateDescriptorSetLayout(device.get(), &layoutInfo, VK_NULL_HANDLE, &m_Descriptor.Layout);
+    VkDescriptorPoolCreateInfo poolInfo = Info::DescriptorPoolCreateInfo(maxSets, poolSizes);
+    vkCreateDescriptorPool(device.get(), &poolInfo, VK_NULL_HANDLE, &m_Descriptor.Pool);
+
+    vector<VkDescriptorSetLayout> layouts(maxSets, m_Descriptor.Layout);
+    m_Descriptor.Sets.resize(maxSets);
+    VkDescriptorSetAllocateInfo allocInfo = Info::DescriptorAllocInfo(layouts, m_Descriptor.Pool, maxSets);
+    vkAllocateDescriptorSets(device.get(), &allocInfo, m_Descriptor.Sets.data());
+    for (auto &binding : bindings) {
+        for (u32 i = 0; i < maxSets; i++) {
+            auto write = Info::DescriptorWrite(binding.Type, 1, binding.DescriptorWrite[i].binding, m_Descriptor.Sets[i]);
+            if (binding.DescriptorWrite[i].bufferInfo.has_value()) {
+                write.pBufferInfo = &binding.DescriptorWrite[i].bufferInfo.value();
+            }
+            if (binding.DescriptorWrite[i].imageInfo.has_value()) {
+                write.pImageInfo = &binding.DescriptorWrite[i].imageInfo.value();
+            }
+            vkUpdateDescriptorSets(device.get(), 1, &write, 0, VK_NULL_HANDLE);
+        }
+    }
+    DescriptorObject* descriptor = &m_Descriptor;
+    return descriptor;
+}
+ws::PipelineObject* ws::PipelineFactory::build(ws::Device device, ws::RenderPass renderPass) {
+
+    VkPipelineViewportStateCreateInfo m_ViewportState = Info::Pipeline::Viewport(m_Viewport, m_Scissor);
+    VkPipelineColorBlendStateCreateInfo m_ColorBlend = Info::Pipeline::ColorBlendCreateInfo(colorBlendAttachment);
+
+    std::vector<VkPipelineShaderStageCreateInfo> shaderStages(m_ShaderStages.size());
+    for (int i = 0; i < shaderStages.size(); i++) {
+        shaderStages[i] = Info::Pipeline::ShaderStageCreateInfo(m_ShaderStages[i]);
+    }
+
+
+    std::vector<VkDescriptorSetLayout> descriptorLayouts = {m_Descriptor.Layout};
+    auto layoutInfo = Info::Pipeline::LayoutCreateInfo(descriptorLayouts, m_PushConstants);
+    vkCreatePipelineLayout(device.get(), &layoutInfo, VK_NULL_HANDLE, &m_Pipelines.Layout);
+
+    VkGraphicsPipelineCreateInfo pipelineInfo {};
+    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipelineInfo.pNext = nullptr;
+    pipelineInfo.flags = 0;
+    pipelineInfo.stageCount = shaderStages.size();
+    pipelineInfo.pStages = shaderStages.data();
+    pipelineInfo.pVertexInputState = &m_VertexInfo;
+    pipelineInfo.pInputAssemblyState = &m_InputAssembly;
+    pipelineInfo.pTessellationState = nullptr;
+    pipelineInfo.pViewportState = &m_ViewportState;
+    pipelineInfo.pRasterizationState = &m_Rasterization;
+    pipelineInfo.pMultisampleState = &m_Multisample;
+    pipelineInfo.pDepthStencilState = nullptr;
+    pipelineInfo.pColorBlendState = &m_ColorBlend;
+    pipelineInfo.pDynamicState = nullptr;
+    pipelineInfo.layout = m_Pipelines.Layout;
+    pipelineInfo.renderPass = renderPass.get();
+    pipelineInfo.subpass = 0;
+    pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
+    pipelineInfo.basePipelineIndex = -1;
+
+    vkCreateGraphicsPipelines(device.get(), VK_NULL_HANDLE, 1, &pipelineInfo, VK_NULL_HANDLE, &m_Pipelines.Pipeline);
+
+    return &m_Pipelines;
+}
+
+
+ws::PipelineFactory pipelineFactory;
+
+
 void                        ws::GraphicsPipeline::create(GraphicsPipelineConstructor) {
     auto StartTime = clock();
-    auto vertexInfo = Info::Pipeline::ShaderStageCreateInfo(vShader);
-    auto fragmentInfo = Info::Pipeline::ShaderStageCreateInfo(fShader);
-    VkPipelineShaderStageCreateInfo shaderStages[2] = {vertexInfo,fragmentInfo};
 
-    auto vertexInput = Info::Pipeline::VertexInputCreateInfo(inputData.bindings, inputData.attributes);
+    ws::DescriptorSet descriptor;
+    descriptor.Count = swapchain.getImageCount();
+    descriptor.Type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    descriptor.Access = VERTEX_SHADER;
+    for (u32 i = 0; i < swapchain.getImageCount(); i++) {
+        ws::WriteInfo info;
+        info.binding = 0;
+        info.bufferInfo = Info::DescriptorBufferInfo(uniformBuffers.get()[0], uniformBuffers.getSize(), 0);
+        descriptor.DescriptorWrite.emplace_back(info);
+    }
 
-    auto inputAssembly = Info::Pipeline::InputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-    auto viewportInfo = Info::Viewport(0.0f,0.0f,swapchain.getExtent(), 0.0f, 1.0f);
-    VkRect2D scissorInfo = {{0,0}, swapchain.getExtent()};
-    auto viewport = Info::Pipeline::Viewport(viewportInfo, scissorInfo);
-    auto rasterization = Info::Pipeline::RasterizationCreateInfo(VK_FALSE, VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_COUNTER_CLOCKWISE);
-    auto multisample = Info::Pipeline::MultisampleCreateInfo(VK_SAMPLE_COUNT_1_BIT);
-    std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachment = {Info::Pipeline::ColorBlendAttachmentCreateInfo(VK_FALSE, BLEND_ONE, BLEND_ONE, BLEND_ZERO, BLEND_ZERO)};
-    auto colorBlend = Info::Pipeline::ColorBlendCreateInfo(colorBlendAttachment);
+    pipelineFactory.addShaderComponent({vShader, fShader});
+    pipelineFactory.addVertexInputComponent(inputData);
+    pipelineFactory.addInputAssemblyComponent(TOPOLOGY_TRIANGLE_LIST);
+    pipelineFactory.addMultiSampleComponent(VK_SAMPLE_COUNT_1_BIT);
+    pipelineFactory.addColorBlendComponent();
+    pipelineFactory.addRasterizationComponent(VK_POLYGON_MODE_FILL);
+    pipelineFactory.addViewportComponent(swapchain.getExtent());
+    auto descriptors = pipelineFactory.addDescriptorObjects({descriptor}, device);
+    auto pipeline = pipelineFactory.build(device, renderPass);
 
-    createSampler(device);
-    createDescriptor(device, uniformBuffers, swapchain.getImageCount());
-
-    VkDynamicState dynamicStates[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_LINE_WIDTH };
-    VkPipelineDynamicStateCreateInfo dynamicState{};
-    dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-    dynamicState.dynamicStateCount = 2;
-    dynamicState.pDynamicStates = dynamicStates;
+    m_Pipeline = pipeline->Pipeline;
+    m_Layout = pipeline->Layout;
+    m_DescriptorLayout = descriptors->Layout;
+    m_Pool = descriptors->Pool;
+    m_DescriptorSets = descriptors->Sets;
 
 
-
-    auto pipelineLayout = Info::Pipeline::LayoutCreateInfo({m_DescriptorLayout}, {});
-    auto res = vkCreatePipelineLayout(device.get(), &pipelineLayout, nullptr, &m_Layout);
-
-    VkGraphicsPipelineCreateInfo pipelineInfo {
-            .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-            .pNext = nullptr,
-            .flags = 0,
-            .stageCount = 2,
-            .pStages = shaderStages,
-            .pVertexInputState = &vertexInput,
-            .pInputAssemblyState = &inputAssembly,
-            .pTessellationState = nullptr,
-            .pViewportState = &viewport,
-            .pRasterizationState = &rasterization,
-            .pMultisampleState = &multisample,
-            .pDepthStencilState = nullptr,
-            .pColorBlendState = &colorBlend,
-            .pDynamicState = nullptr,
-            .layout = m_Layout,
-            .renderPass = renderPass.get(),
-            .subpass = 0,
-            .basePipelineHandle = VK_NULL_HANDLE,
-            .basePipelineIndex = -1
-    };
-    auto pipelineRes = vkCreateGraphicsPipelines(device.get(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_Pipeline);
     printf("Pipeline: %lims\n", clock()-StartTime);
 }
                             ws::GraphicsPipeline::GraphicsPipeline(GraphicsPipelineConstructor) {
@@ -819,8 +919,52 @@ VkBuffer                    ws::Buffer::get() {
     return m_Buffer;
 }
 
-                            ws::VertexBuffer::VertexBuffer(ws::Device device, VkCommandPool pool, VkDeviceSize size, void* vertexdata) : Buffer(device, pool, size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertexdata) {}
+                            ws::VertexBuffer::VertexBuffer(ws::Device device, VkCommandPool pool, VkDeviceSize size, void* vertexdata) {
+    auto StartTime = clock();
+    auto stagingBuffer = CREATE_STAGING_BUFFER(device.get(), device.getPhysicalDevice(), size);
+    m_StagingBuffer = stagingBuffer.Buffer;
+    m_StagingMemory = stagingBuffer.Memory;
 
+    UPLOAD_BUFFER_TO_MEMORY(device.get(), stagingBuffer.Memory, vertexdata, size);
+
+
+
+    auto Buffer = CreateBuffer(device.get(), device.getPhysicalDevice(), size,
+                               VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                               GPU_MEMORY);
+
+    CopyBuffer(device.get(), pool, device.getGraphicsQueue(), Buffer.Buffer, stagingBuffer.Buffer, size);
+    m_Buffer = Buffer.Buffer;
+    m_Memory = Buffer.Memory;
+
+
+    printf("Buffer: %lims\n", clock()-StartTime);
+}
+void                        ws::VertexBuffer::upload(ws::Device device, VkCommandPool pool, VkDeviceSize size, void* vertexdata) {
+    auto StartTime = clock();
+    destroy(device);
+
+    auto tempBuffer = CREATE_STAGING_BUFFER(device.get(), device.getPhysicalDevice(), size);
+    m_StagingBuffer = tempBuffer.Buffer;
+    m_StagingMemory = tempBuffer.Memory;
+
+    UPLOAD_BUFFER_TO_MEMORY(device.get(), m_StagingMemory, vertexdata, size);
+
+    auto tempBufferVertex = CreateBuffer(device.get(), device.getPhysicalDevice(),size, VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                                        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, GPU_MEMORY);
+    m_Buffer = tempBufferVertex.Buffer;
+    m_Memory = tempBufferVertex.Memory;
+
+    CopyBuffer(device.get(), pool, device.getGraphicsQueue(), m_Buffer, m_StagingBuffer, size);
+    printf("Vertex Buffer Recreation: %lims\n", clock()-StartTime);
+}
+VkBuffer                    ws::VertexBuffer::get() { return m_Buffer; }
+void                        ws::VertexBuffer::destroy(ws::Device device) {
+    vkFreeMemory(device.get(), m_StagingMemory, nullptr);
+    vkDestroyBuffer(device.get(), m_StagingBuffer, nullptr);
+    vkDestroyBuffer(device.get(), m_Buffer, nullptr);
+    vkFreeMemory(device.get(), m_Memory, nullptr);
+}
 
                             ws::IndexBuffer::IndexBuffer(ws::Device device, VkCommandPool pool, VkDeviceSize size, void *indexdata) : Buffer(device, pool, size, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, indexdata) {}
 

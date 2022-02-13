@@ -65,6 +65,14 @@ struct BufferObject {
     VkBuffer Buffer;
     VkDeviceMemory Memory;
 };
+struct VertexInputData {
+    vector<VkVertexInputAttributeDescription>& attributes;
+    vector<VkVertexInputBindingDescription>& bindings;
+};
+
+
+
+
 
 namespace Info {
     // Instance
@@ -79,7 +87,7 @@ namespace Info {
                                         const std::vector<const char *> &extensions, VkPhysicalDeviceFeatures *features = nullptr);
 
 
-    VkCommandPoolCreateInfo CommandPoolCreateInfo(u32 index);
+    VkCommandPoolCreateInfo CommandPoolCreateInfo(u32 index, u32 flags = 0);
     VkCommandBufferAllocateInfo CommandBufferAllocationInfo(VkCommandPool pool, u32 bufferCount, VkCommandBufferLevel level);
     VkCommandBufferBeginInfo CommandBufferBeginInfo();
 
@@ -158,7 +166,7 @@ namespace Info {
         ColorBlendCreateInfo(const std::vector<VkPipelineColorBlendAttachmentState> &attachments);
 
         VkPipelineLayoutCreateInfo LayoutCreateInfo(const std::vector<VkDescriptorSetLayout> descriptorSetLayout,
-                                                    const std::vector<VkPushConstantRange> &pushConstants);
+                                                    const std::vector<VkPushConstantRange> pushConstants);
 
         VkFramebufferCreateInfo
         FramebufferCreateInfo(VkRenderPass renderpass, const std::vector<VkImageView> &attachments, VkExtent2D extent,
@@ -204,6 +212,7 @@ namespace Info {
     VkVertexInputBindingDescription VertexInputBindingDescription(u32 binding, u32 stride, VkVertexInputRate inputRate);
     VkDescriptorSetLayoutCreateInfo DescriptorLayoutCreateInfo(vector<VkDescriptorSetLayoutBinding> bindings);
     VkWriteDescriptorSet DescriptorWrite(VkDescriptorType type, u32 count, u32 binding, VkDescriptorSet& descriptor, VkDescriptorBufferInfo* bufferInfo = nullptr, VkDescriptorImageInfo* imageInfo = nullptr);
+    VkDescriptorBufferInfo DescriptorBufferInfo(VkBuffer buffer, VkDeviceSize range, VkDeviceSize offset);
 }
 
 #endif //ENGINE_INFOS_HPP

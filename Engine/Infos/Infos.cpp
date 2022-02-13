@@ -53,11 +53,11 @@ namespace Info {
         info.pEnabledFeatures = features;
         return info;
     }
-    VkCommandPoolCreateInfo CommandPoolCreateInfo(u32 index) {
+    VkCommandPoolCreateInfo CommandPoolCreateInfo(u32 index, u32 flags) {
         VkCommandPoolCreateInfo info{};
         info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
         info.pNext = nullptr;
-        info.flags = 0;
+        info.flags = flags;
         info.queueFamilyIndex = index;
         return info;
     }
@@ -377,15 +377,25 @@ namespace Info {
             info.pAttachments = attachments.data();
             return info;
         }
-        VkPipelineLayoutCreateInfo LayoutCreateInfo(const vector<VkDescriptorSetLayout> descriptorSetLayouts, const vector<VkPushConstantRange>& pushConstants) {
+        VkPipelineLayoutCreateInfo LayoutCreateInfo(const vector<VkDescriptorSetLayout> descriptorSetLayouts, const vector<VkPushConstantRange> pushConstants) {
             VkPipelineLayoutCreateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
             info.pNext = nullptr;
             info.flags = 0;
-            info.setLayoutCount = static_cast<uint32_t>(descriptorSetLayouts.size());
-            info.pSetLayouts = descriptorSetLayouts.data();
-            info.pushConstantRangeCount = static_cast<uint32_t>(pushConstants.size());
-            info.pPushConstantRanges = pushConstants.data();
+            if (descriptorSetLayouts.empty()) {
+                info.setLayoutCount = 0;
+                info.pSetLayouts = VK_NULL_HANDLE;
+            } else {
+                info.setLayoutCount = static_cast<uint32_t>(descriptorSetLayouts.size());
+                info.pSetLayouts = descriptorSetLayouts.data();
+            }
+            if (pushConstants.empty()) {
+                info.pushConstantRangeCount = 0;
+                info.pPushConstantRanges = VK_NULL_HANDLE;
+            } else {
+                info.pushConstantRangeCount = static_cast<uint32_t>(pushConstants.size());
+                info.pPushConstantRanges = pushConstants.data();
+            }
             return info;
         }
     }
@@ -539,6 +549,13 @@ namespace Info {
         info.dstSet= descriptor;
         info.pBufferInfo = bufferInfo;
         info.pImageInfo = imageInfo;
+        return info;
+    }
+    VkDescriptorBufferInfo DescriptorBufferInfo(VkBuffer buffer, VkDeviceSize range, VkDeviceSize offset) {
+        VkDescriptorBufferInfo info{};
+        info.offset = offset;
+        info.buffer = buffer;
+        info.range = range;
         return info;
     }
 }

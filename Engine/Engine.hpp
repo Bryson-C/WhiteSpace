@@ -34,8 +34,6 @@
 
 
 
-
-
 template<typename T>
 struct v2 {
     T x,y;
@@ -209,6 +207,33 @@ void CopyBuffer(VkDevice device, VkCommandPool pool, VkQueue queue, VkBuffer dst
 
 namespace ws {
 
+    struct PipelineObject {
+        VkPipelineLayout Layout;
+        VkPipeline Pipeline;
+    };
+
+    struct DescriptorObject {
+        VkDescriptorSetLayout Layout;
+        VkDescriptorPool Pool;
+        vector<VkDescriptorSet> Sets;
+    };
+    struct WriteInfo {
+        u32 binding;
+        std::optional<VkDescriptorImageInfo> imageInfo{};
+        std::optional<VkDescriptorBufferInfo> bufferInfo{};
+    };
+    struct DescriptorSet {
+        VkShaderStageFlags Access;
+        VkDescriptorType Type;
+        uint32_t Count;
+        std::vector<WriteInfo> DescriptorWrite;
+    };
+
+
+
+
+
+
 #define UPDATE_UNIFORM_BUFFER(device, uniformBuffers, uniformData, imageIndex) \
     auto m_Memory = uniformBuffers.getMem();               \
     void* UNIFORM_UPLOAD; \
@@ -229,10 +254,6 @@ namespace ws {
     struct ImageArray {
         vector<VkImage>     Image;
         vector<VkImageView> View;
-    };
-    struct VertexInputData {
-        vector<VkVertexInputAttributeDescription>& attributes;
-        vector<VkVertexInputBindingDescription>& bindings;
     };
     struct UniformDescription {};
     struct Texture {
@@ -267,6 +288,8 @@ namespace ws {
         GLFWwindow* get();
         VkSurfaceKHR getSurface();
         VkExtent2D size() const;
+        v2<u32> getMousePos();
+        bool keyDown(int keycode);
     };
 
     class Device {
@@ -302,9 +325,14 @@ namespace ws {
         VkBuffer get();
     };
 
-    class VertexBuffer : public Buffer {
+    class VertexBuffer  {
+        VkBuffer m_Buffer, m_StagingBuffer;
+        VkDeviceMemory m_Memory, m_StagingMemory;
     public:
         VertexBuffer(ws::Device device, VkCommandPool pool, VkDeviceSize size, void* vertexdata);
+        void upload(ws::Device device, VkCommandPool pool, VkDeviceSize size, void* vertexdata);
+        VkBuffer get();
+        void destroy(ws::Device device);
     };
 
     class IndexBuffer : public Buffer {
@@ -418,6 +446,64 @@ namespace ws {
         //void free();
     };
 
+
+    class PipelineFactory {
+    private:
+        PipelineObject m_Pipelines{};
+        std::vector<Shader> m_ShaderStages{};
+        VkPipelineVertexInputStateCreateInfo m_VertexInfo{};
+        VkPipelineInputAssemblyStateCreateInfo m_InputAssembly{};
+        VkViewport m_Viewport;
+        VkRect2D m_Scissor;
+        VkPipelineRasterizationStateCreateInfo m_Rasterization{};
+        VkPipelineMultisampleStateCreateInfo m_Multisample{};
+        vector<VkPipelineColorBlendAttachmentState> colorBlendAttachment;
+        vector<VkPushConstantRange> m_PushConstants{};
+        DescriptorObject m_Descriptor{};
+    public:
+        // Adds A Shader To Be Processed Later During [build] Function
+        void addShaderComponent(Shader shader);
+        void addShaderComponent(std::initializer_list<Shader> shaders);
+
+        // Adds A VertexInputState To Be Processed Later During [build] Function
+        void addVertexInputComponent(VertexInputData vertexData);
+
+        // Adds A InputAssemblyState To Be Processed Later During [build] Function
+        void addInputAssemblyComponent(VkPrimitiveTopology topology);
+
+        //Adds A ViewportState To Be Processed Later During [build] Function
+        void addViewportComponent(VkExtent2D extent);
+        void addViewportComponent(Window window);
+
+        //Adds A RasterizationState To Be Processed Later During [build] Function
+        void addRasterizationComponent(VkPolygonMode drawMode,
+                                       VkCullModeFlags cullmode = VK_CULL_MODE_BACK_BIT,
+                                       VkFrontFace frontface = VK_FRONT_FACE_COUNTER_CLOCKWISE);
+
+        //Adds A MultisampleState To Be Processed Later During [build] Function
+        void addMultiSampleComponent(VkSampleCountFlagBits samples);
+
+        //Adds A ColorBlendState To Be Processed Later During [build] Function
+        void addColorBlendComponent(vector<VkPipelineColorBlendAttachmentState> attachments = {});
+
+        //Adds A Set Amount Of PushConstantRanges To Be Processed Later During [build] Function
+        void addPushConstants();
+
+        //Adds A Set Amount Of Descriptor Objects To Be Processed Later During [build] Function
+        DescriptorObject* addDescriptorObjects(vector<ws::DescriptorSet> bindings, ws::Device device);
+
+        //WIP
+        void addSampler();
+
+        // Final Processing Of The Pipeline, Returns A Pipeline Structure Containing Vital Information
+        PipelineObject* build(ws::Device device, ws::RenderPass renderPass);
+    };
+
+
+
+
+
+
 // I made this simply because I dont want to keep writing it
 #define GraphicsPipelineConstructor \
                         ws::Device device, ws::Swapchain swapchain, ws::RenderPass renderPass, \
@@ -437,11 +523,6 @@ namespace ws {
 
         VkSampler m_Sampler;
         void createSampler(ws::Device device);
-
-        VkDescriptorSetLayout m_TextureLayout;
-        VkDescriptorPool m_TexturePool;
-        vector<VkDescriptorSet> m_TextureSet;
-        std::vector<ws::Texture> m_Textures;
     public:
         //GraphicsPipeline() {};
         // Creates Graphics Pipeline And Related Objects
