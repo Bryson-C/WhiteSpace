@@ -8,6 +8,7 @@ Personal Vulkan Engine
  ### Feburary 15 2022
  - Added PipelineFactory Class (For Building Graphics Pipelines)
  - Rebuilt GraphicsPipeline Class To Use PipelineFactory Class For Creation
+ - New Functions In Infos/Infos.hpp + Infos/Infos.cpp
  - (**If You Use This Renderer I Pity You**)
  - (**No Safety Features Have Been Added!**)
  ### January 24 2022
