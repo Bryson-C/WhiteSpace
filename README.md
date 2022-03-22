@@ -5,6 +5,14 @@ Personal Vulkan Engine
  - Currently Uses Spaghetti Code
  
  ## Updates
+ ### March 22 2022
+ - Added Many Abstractions
+ - Split Contents Of Engine.cpp And Engine.hpp Into Seperate File Named Accordingly
+ - Added Inline Command Buffers To Device Object
+ - Added New Class `WSInstance` Which Is A Compilation Of The Previous Main Function
+ - Remade Main Function To Use `WSInstance` Class (Old Main Exists As `void main2()` still)
+ - Changes To Infos.cpp And Infos.hpp Files To Include More Optional Function Parameters
+ - Other Changes I may Have Forgotten
  ### Feburary 15 2022
  - Added PipelineFactory Class (For Building Graphics Pipelines)
  - Rebuilt GraphicsPipeline Class To Use PipelineFactory Class For Creation
