@@ -5,9 +5,9 @@ Personal Vulkan Engine
  - Currently Uses Spaghetti Code
  
  ## TODO
- - [] Move Away From C++ Standard As It Can Get Quite Messy
- - [] Re-Create Time Functions And Classes
- - [] Add Built In Frame Syncronization Into The Device Class As This Is What Class Interacts With Queue Submission
+ [] Move Away From C++ Standard As It Can Get Quite Messy
+ [] Re-Create Time Functions And Classes
+ [] Add Built In Frame Syncronization Into The Device Class As This Is What Class Interacts With Queue Submission
  
  ## Updates
  ### March 22 2022
